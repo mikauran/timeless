@@ -260,14 +260,23 @@ MIT License — see [LICENSE](LICENSE) for details.
 
 ---
 
+## Author
+
+**Shahbaz Siddeeq**
+PhD Researcher · Tel Aviv University
+[github.com/shahbazsiddeeq](https://github.com/shahbazsiddeeq)
+
+---
+
 ## Citation
 
 If you use Timeless in your research, please cite:
 
 ```
 @software{timeless2026,
-  title  = {Timeless: Holographic Meeting Intelligence},
+  author = {Siddeeq, Shahbaz},
+  title  = {Timeless: Holographic Meeting Intelligence for End-to-End Software Development},
   year   = {2026},
-  url    = {https://github.com/GPT-Laboratory/timeless-architecture-base}
+  url    = {https://github.com/shahbazsiddeeq/timeless-end-to-end-software-development}
 }
 ```
