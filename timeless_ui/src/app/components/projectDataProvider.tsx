@@ -488,9 +488,9 @@ export default function ProjectDataWrapper() {
           })}
         </div>
 
-        {/* Ambient voice strip */}
+        {/* Ambient voice strip — frozen while code is generating */}
         <div className={styles.voiceStrip}>
-          <VoiceVisuals />
+          <VoiceVisuals active={!data.code_generation_running} />
         </div>
 
       </div>
