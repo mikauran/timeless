@@ -172,3 +172,46 @@ cython_debug/
 
 # AI system output
 output/
+node_modules/
+
+# ── Timeless-specific ──────────────────────────────────────
+# Secrets — never commit the real .env
+.env
+
+# Generated project output (created at runtime)
+projects/
+results/
+
+# macOS metadata
+.DS_Store
+**/.DS_Store
+
+# IDE
+.vscode/
+.idea/
+
+# Large third-party model weights
+SadTalker/
+gfpgan/
+
+# Root-level package files (not the timeless_ui ones)
+/package.json
+/package-lock.json
+
+# Misc one-off artefacts
+calculator.html
+sample.wav
+run_avatar.py
+run_avatar_v1.py
+avatar.jpg
+
+# ── Backup / old versions (keep repo clean) ───────────────
+bootstrap.py_ORG
+README.md-v0.1
+manager_service/manager_service_ORG.py
+manager_service/manager_service_ready_*.py
+manager_service/manager_service.py-*
+timeless_ui/src/app/components/projectDataProvider_*.tsx
+timeless_ui/src/app/components/StopDiscussionButton.tsx_v1
+timeless_ui/src/app/styles/dataProvider.module.css-ready.24nov
+timeless_ui/src/app/styles/dataProvider.module.css.additions.css

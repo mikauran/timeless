@@ -1,39 +1,1392 @@
-.wrapper {
+/* ═══════════════════════════════════════════════════════════════════
+   TIMELESS — Holographic Command Interface
+   dataProvider.module.css
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ── Legacy / compat classes ──────────────────────────────────────── */
+.wrapper            { width: 100%; padding: 0; }
+.mainContainer      { display: flex; gap: 20px; }
+.stateWrapper       { display: flex; justify-content: space-between; align-items: center; }
+.stateStep          { flex: 1; text-align: center; padding: 8px; border-radius: 20px; }
+.stateStep.active   { background: rgba(0,229,255,0.12); color: #00e5ff; }
+.middleRow          { display: flex; flex: 1; gap: 20px; overflow: hidden; }
+.leftColumn         { flex: 1; display: flex; flex-direction: column; }
+.rightColumn        { flex: 1; overflow-y: auto; }
+.bottomRow          { flex: 1; overflow: hidden; }
+.meetingMinutesCard { background: rgba(6,14,28,0.88); border-radius: 10px; padding: 1rem; }
+.meetingMinutesContent { overflow-y: auto; flex: 1; }
+.meetingNotesBlock  { padding: 15px; height: 35vh; overflow-y: auto; }
+.requirementsBlock  { padding: 15px; height: 30vh; }
+.discussionBoxparent { padding: 15px; height: 45vh; overflow-y: hidden; }
+.stopButtonWrapper  { margin: 20px 0; }
+.loaderWrapper      { display: flex; flex-direction: column; align-items: center; }
+.projectFilesContainer { display: flex; gap: 10px; flex: 1; }
+.fileTree           { overflow-y: auto; border: 1px solid rgba(0,229,255,0.1); padding: 10px; background: rgba(6,14,28,0.88); color: #e2f0fb; }
+.fileItem           { cursor: pointer; padding: 2px 5px; color: rgba(226,240,251,0.55); border-radius: 3px; }
+.fileItem:hover     { background: rgba(0,229,255,0.08); color: #00e5ff; }
+.selectedFile       { background: rgba(0,229,255,0.12); color: #00e5ff; }
+.codeEditorContainer { display: flex; flex-direction: column; }
+.editorHeader       { background: rgba(4,9,18,0.95); color: #e2f0fb; padding: 8px 12px; font-weight: 600; border-bottom: 1px solid rgba(0,229,255,0.08); }
+.codeEditor         { flex: 1; border-radius: 10px; overflow: hidden; }
+
+/* ── MAIN SPLIT LAYOUT ────────────────────────────────────────────── */
+
+.splitWrapper {
   display: flex;
   flex-direction: column;
-  padding: 10px 40px 0px 40px;
+  height: 100vh;
+  overflow: hidden;
+  background: transparent;
 }
 
-.requirementsAndState {
-  height: 200px;
-  overflow-y: auto;
-  margin-top: 20px;
-  margin-bottom: 20px;
+.statusBar {
+  flex-shrink: 0;
+  padding: 10px 20px;
+  background: rgba(4, 8, 15, 0.90);
+  border-bottom: 1px solid rgba(0, 229, 255, 0.09);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+}
+
+.splitPanels {
   display: flex;
-  flex-direction: row;
-  justify-content: space-between;
+  flex: 1;
+  overflow: hidden;
 }
 
-.spinnerWrapper {
+/* ── LEFT PANEL ──────────────────────────────────────────────────── */
+
+.leftPanel {
+  width: 42%;
+  min-width: 320px;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid rgba(0, 229, 255, 0.08);
+  background: rgba(4, 9, 18, 0.85);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  overflow: hidden;
+}
+
+.micBlock {
+  flex-shrink: 0;
+  border-bottom: 1px solid rgba(0, 229, 255, 0.07);
+  overflow: hidden;
+}
+
+.transcriptionBlock {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 14px;
+  border-bottom: 1px solid rgba(0, 229, 255, 0.07);
+}
+
+.leftTabsBlock {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ── TAB BAR ─────────────────────────────────────────────────────── */
+
+.tabBar {
+  display: flex;
+  flex-shrink: 0;
+  background: rgba(4, 8, 15, 0.95);
+  border-bottom: 1px solid rgba(0, 229, 255, 0.07);
+  padding: 0 4px;
+}
+
+.tab {
+  position: relative;
+  padding: 10px 12px;
+  font-size: 10.5px;
+  font-weight: 500;
+  font-family: var(--font-mono, 'JetBrains Mono', monospace);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(226, 240, 251, 0.32);
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.2s, border-color 0.2s, text-shadow 0.2s;
+}
+
+.tab:hover {
+  color: rgba(226, 240, 251, 0.70);
+}
+
+.tabActive {
+  color: #00e5ff !important;
+  border-bottom-color: #00e5ff !important;
+  text-shadow: 0 0 14px rgba(0, 229, 255, 0.55);
+}
+
+.tabContent {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px;
+}
+
+/* ── RIGHT PANEL ─────────────────────────────────────────────────── */
+
+.rightPanel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: rgba(3, 7, 14, 0.78);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  overflow: hidden;
+}
+
+.rightTabContent {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Output tab */
+.outputPanel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.deploymentLink {
+  display: block;
+  padding: 7px 16px;
+  font-size: 11px;
+  font-family: var(--font-mono, monospace);
+  color: #00e5ff;
+  border-bottom: 1px solid rgba(0, 229, 255, 0.08);
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  letter-spacing: 0.02em;
+  transition: background 0.2s;
+}
+
+.deploymentLink:hover {
+  background: rgba(0, 229, 255, 0.05);
+}
+
+.outputWaiting {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(226, 240, 251, 0.22);
+  font-size: 13px;
+  text-align: center;
+  padding: 32px;
+}
+
+/* Code tab */
+.codePanel {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+.fileTreeSidebar {
+  width: 200px;
+  flex-shrink: 0;
+  border-right: 1px solid rgba(0, 229, 255, 0.07);
+  overflow-y: auto;
+  background: rgba(4, 9, 18, 0.95);
+}
+
+.editorArea {
+  flex: 1;
+  overflow: hidden;
+}
+
+.emptyCodeState {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(226, 240, 251, 0.22);
+  font-size: 13px;
+  font-style: italic;
+}
+
+/* ── LOADING / MIC STATES ────────────────────────────────────────── */
+
+.loadingText {
+  padding: 24px;
+  color: rgba(226, 240, 251, 0.35);
+  font-size: 13px;
+}
+
+/* ── SSE connecting spinner ── */
+.sseLoadingScreen {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 1rem;
-  margin: 2rem 0;
+  flex: 1;
+  gap: 20px;
+}
+
+.sseSpinner {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  border: 2px solid rgba(0,229,255,0.12);
+  border-top-color: rgba(0,229,255,0.75);
+  animation: spinRing 1s linear infinite;
+}
+
+@keyframes spinRing {
+  to { transform: rotate(360deg); }
+}
+
+.sseLoadingText {
+  font-size: 0.8rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(226,240,251,0.35);
+  font-family: var(--font-mono, monospace);
+  animation: textPulse 1.8s ease-in-out infinite;
+}
+
+/* ── SSE error / connection failure ── */
+.sseErrorScreen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  gap: 18px;
+  padding: 40px;
+  text-align: center;
+}
+
+.sseErrorIcon {
+  font-size: 2.4rem;
+  color: rgba(255,69,58,0.75);
+  text-shadow: 0 0 20px rgba(255,69,58,0.35);
+}
+
+.sseErrorTitle {
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: rgba(226,240,251,0.80);
+  margin: 0;
+  font-family: var(--font-mono, monospace);
+}
+
+.sseErrorBody {
+  font-size: 0.82rem;
+  color: rgba(226,240,251,0.40);
+  margin: 0;
+  line-height: 1.6;
+}
+
+.sseErrorBody code {
+  color: rgba(0,229,255,0.70);
+  background: rgba(0,229,255,0.06);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 0.9em;
+}
+
+.sseRunCmd {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  background: rgba(4,9,18,0.75);
+  border: 1px solid rgba(0,229,255,0.14);
+  border-radius: 8px;
+  padding: 14px 22px;
+}
+
+.sseRunLabel {
+  font-size: 0.72rem;
+  color: rgba(226,240,251,0.28);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-family: var(--font-mono, monospace);
+}
+
+.sseRunCode {
+  font-size: 0.84rem;
+  color: #00e5ff;
+  font-family: var(--font-mono, 'JetBrains Mono', monospace);
+  text-shadow: 0 0 10px rgba(0,229,255,0.40);
+  user-select: all;
+}
+
+.sseRetryBtn {
+  margin-top: 4px;
+  padding: 9px 28px;
+  border-radius: 20px;
+  border: 1px solid rgba(0,229,255,0.35);
+  background: rgba(0,229,255,0.06);
+  color: #00e5ff;
+  font-size: 0.82rem;
+  font-family: var(--font-mono, monospace);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s, box-shadow 0.2s;
+}
+
+.sseRetryBtn:hover {
+  background: rgba(0,229,255,0.12);
+  border-color: rgba(0,229,255,0.65);
+  box-shadow: 0 0 18px rgba(0,229,255,0.18);
+}
+
+.centerMicContainer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  height: 100%;
+  gap: 16px;
+  background: transparent;
+}
+
+.micHintText {
+  font-size: 13px;
+  color: rgba(226, 240, 251, 0.35);
+}
+
+/* ── SPINNERS ────────────────────────────────────────────────────── */
+
+.spinnerWrapper {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: rgba(226, 240, 251, 0.35);
+  font-size: 13px;
 }
 
 .spinner {
-  width: 40px;
-  height: 40px;
-  border: 4px solid rgba(0, 0, 0, 0.1);
-  border-top: 4px solid #0cc7b3;
+  width: 28px;
+  height: 28px;
+  border: 2px solid rgba(0, 229, 255, 0.12);
+  border-top-color: #00e5ff;
   border-radius: 50%;
-  animation: spin 1s linear infinite;
+  animation: spin 0.75s linear infinite;
+  box-shadow: 0 0 12px rgba(0, 229, 255, 0.2);
 }
 
 @keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
+  to { transform: rotate(360deg); }
+}
+
+/* ── CODE-GENERATION OVERLAY ─────────────────────────────────────── */
+
+.codegenOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(2, 5, 12, 0.80);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.codegenCard {
+  background: rgba(6, 14, 28, 0.94);
+  border: 1px solid rgba(0, 229, 255, 0.18);
+  border-radius: 20px;
+  padding: 52px 64px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  box-shadow:
+    0 0 0 1px rgba(0, 229, 255, 0.06),
+    0 32px 80px rgba(0, 0, 0, 0.7),
+    0 0 60px rgba(0, 229, 255, 0.06);
+  max-width: 420px;
+  width: 90%;
+}
+
+.codegenSpinner {
+  width: 60px;
+  height: 60px;
+  border: 2px solid rgba(0, 229, 255, 0.10);
+  border-top-color: #00e5ff;
+  border-right-color: rgba(191, 90, 242, 0.55);
+  border-radius: 50%;
+  animation: spin 0.9s linear infinite;
+  box-shadow: 0 0 22px rgba(0, 229, 255, 0.22);
+}
+
+.codegenTitle {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #e2f0fb;
+  margin: 0;
+  text-align: center;
+  letter-spacing: -0.01em;
+}
+
+.codegenStatus {
+  font-size: 11.5px;
+  color: rgba(226, 240, 251, 0.40);
+  margin: 0;
+  text-align: center;
+  min-height: 18px;
+  font-family: var(--font-mono, monospace);
+  letter-spacing: 0.03em;
+  transition: opacity 0.3s;
+}
+
+.progressBarOuter {
+  width: 100%;
+  height: 2px;
+  background: rgba(0, 229, 255, 0.08);
+  border-radius: 99px;
+  overflow: hidden;
+}
+
+.progressBarInner {
+  height: 100%;
+  background: linear-gradient(90deg, #00e5ff, #bf5af2);
+  border-radius: 99px;
+  transition: width 0.6s ease;
+  min-width: 4px;
+  box-shadow: 0 0 10px rgba(0, 229, 255, 0.45);
+}
+
+.progressPercent {
+  font-size: 11px;
+  color: rgba(226, 240, 251, 0.28);
+  margin: 0;
+  letter-spacing: 0.06em;
+  font-family: var(--font-mono, monospace);
+}
+
+/* ── FEEDBACK / ADVISOR TAB ──────────────────────────────────────── */
+
+.feedbackBox {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.65;
+  color: rgba(226, 240, 251, 0.65);
+}
+
+.feedbackBox h3 {
+  margin: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: rgba(226, 240, 251, 0.55);
+  font-style: italic;
+}
+
+.feedbackBox p {
+  margin: 0 0 4px 0;
+  font-size: 13px;
+  line-height: 1.65;
+  color: rgba(226, 240, 251, 0.65);
+}
+
+.feedbackBox ol {
+  padding-left: 18px;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.feedbackBox li {
+  font-size: 13px;
+  line-height: 1.6;
+  color: rgba(226, 240, 251, 0.65);
+}
+
+.feedbackBox strong { color: #e2f0fb; }
+
+.feedbackEmpty {
+  font-size: 12.5px;
+  color: rgba(226, 240, 251, 0.25);
+  font-style: italic;
+  margin: 0;
+}
+
+/* Notification dot on Advisor/Feedback tab */
+.feedbackDot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #ffd60a;
+  margin-left: 6px;
+  vertical-align: middle;
+  flex-shrink: 0;
+  box-shadow: 0 0 8px rgba(255, 214, 10, 0.65);
+}
+
+/* ── ADVISOR SUGGESTION CARDS ────────────────────────────────────── */
+
+.suggestionCard {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  background: rgba(255, 214, 10, 0.03);
+  border: 1px solid rgba(255, 214, 10, 0.10);
+  border-left: 3px solid rgba(255, 214, 10, 0.55);
+  border-radius: 6px;
+  padding: 10px 10px 10px 12px;
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.suggestionCard:hover {
+  background: rgba(255, 214, 10, 0.05);
+  border-left-color: #ffd60a;
+}
+
+.suggestionText {
+  flex: 1;
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: rgba(226, 240, 251, 0.70);
+}
+
+.suggestionDismiss {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 10px;
+  color: rgba(226, 240, 251, 0.20);
+  padding: 2px 4px;
+  border-radius: 4px;
+  line-height: 1;
+  transition: color 0.15s, background 0.15s;
+  margin-top: 1px;
+}
+
+.suggestionDismiss:hover {
+  color: #ff453a;
+  background: rgba(255, 69, 58, 0.10);
+}
+
+.reviewFeedbackBlock {
+  border-top: 1px solid rgba(0, 229, 255, 0.07);
+  padding-top: 10px;
+  font-size: 13px;
+  color: rgba(226, 240, 251, 0.65);
+  line-height: 1.6;
+}
+
+.reviewFeedbackBlock ol,
+.reviewFeedbackBlock ul {
+  padding-left: 18px;
+  margin: 6px 0 0 0;
+}
+
+.reviewFeedbackBlock li { margin-bottom: 6px; }
+
+/* ── VOICE-TRIGGERED POPUP ───────────────────────────────────────── */
+
+.voicePopupOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(2, 5, 12, 0.78);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 900;
+}
+
+.voicePopupCard {
+  background: rgba(6, 14, 28, 0.96);
+  border: 1px solid rgba(0, 229, 255, 0.16);
+  border-radius: 20px;
+  width: 88vw;
+  max-width: 900px;
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow:
+    0 0 0 1px rgba(0,229,255,0.05),
+    0 32px 80px rgba(0,0,0,0.75),
+    0 0 60px rgba(0,229,255,0.05);
+  overflow: hidden;
+}
+
+.voicePopupHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 28px 16px;
+  border-bottom: 1px solid rgba(0, 229, 255, 0.07);
+  flex-shrink: 0;
+}
+
+.voicePopupTitle {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: #e2f0fb;
+  margin: 0;
+  letter-spacing: -0.02em;
+}
+
+.voicePopupClose {
+  background: none;
+  border: 1px solid rgba(0, 229, 255, 0.15);
+  font-size: 1rem;
+  color: rgba(226, 240, 251, 0.45);
+  cursor: pointer;
+  padding: 4px 9px;
+  border-radius: 6px;
+  line-height: 1;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+
+.voicePopupClose:hover {
+  border-color: rgba(0, 229, 255, 0.50);
+  color: #00e5ff;
+  background: rgba(0, 229, 255, 0.06);
+}
+
+.voicePopupBody {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px 32px 32px;
+}
+
+.popupReqList {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.popupReqList li {
+  font-size: 1.05rem;
+  line-height: 1.6;
+  color: rgba(226, 240, 251, 0.78);
+  padding: 12px 16px;
+  border-radius: 8px;
+  background: rgba(0, 229, 255, 0.04);
+  border: 1px solid rgba(0, 229, 255, 0.08);
+}
+
+.popupNotes {
+  font-size: 1rem;
+  line-height: 1.85;
+  color: rgba(226, 240, 251, 0.72);
+}
+
+.popupFeedback {
+  font-size: 1.05rem;
+  line-height: 1.85;
+  color: rgba(226, 240, 251, 0.72);
+  white-space: pre-wrap;
+}
+
+/* ── EPICS TAB ───────────────────────────────────────────────────── */
+
+.epicsContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.epicCard {
+  background: rgba(6, 14, 28, 0.70);
+  border: 1px solid rgba(255,255,255,0.05);
+  border-left: 3px solid #6366f1;
+  border-radius: 8px;
+  padding: 11px 13px;
+  transition: border-color 0.2s;
+}
+
+.epicCard:hover {
+  border-color: rgba(255,255,255,0.10);
+}
+
+.epicHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 5px;
+}
+
+.epicBadge {
+  font-size: 9px;
+  font-weight: 700;
+  font-family: var(--font-mono, monospace);
+  color: rgba(4, 8, 15, 0.90);
+  border-radius: 4px;
+  padding: 2px 7px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  flex-shrink: 0;
+}
+
+.epicTitle {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #e2f0fb;
+  margin: 0;
+  line-height: 1.3;
+}
+
+.epicDesc {
+  font-size: 12px;
+  color: rgba(226, 240, 251, 0.42);
+  margin: 0 0 8px 0;
+  line-height: 1.5;
+}
+
+.featureList {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.featureItem {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  font-size: 12px;
+  color: rgba(226, 240, 251, 0.55);
+  line-height: 1.4;
+}
+
+.featureDot {
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-top: 5px;
+}
+
+.emptyEpicsState {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100px;
+  color: rgba(226, 240, 251, 0.22);
+  font-size: 12.5px;
+  text-align: center;
+  padding: 24px;
+  font-style: italic;
+}
+
+/* ── MIND MAP TAB ────────────────────────────────────────────────── */
+
+.mindMapContainer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+  padding: 8px 4px 16px;
+  overflow-x: auto;
+}
+
+.mmRootWrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.mmRoot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: rgba(0, 229, 255, 0.07);
+  border: 1px solid rgba(0, 229, 255, 0.22);
+  border-radius: 10px;
+  padding: 10px 20px;
+  text-align: center;
+  max-width: 260px;
+  box-shadow: 0 0 22px rgba(0, 229, 255, 0.08);
+}
+
+.mmRootName {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #00e5ff;
+  letter-spacing: 0.02em;
+}
+
+.mmRootDesc {
+  font-size: 11px;
+  color: rgba(0, 229, 255, 0.60);
+  margin-top: 3px;
+  line-height: 1.4;
+}
+
+.mmRootLine {
+  width: 1px;
+  height: 18px;
+  background: rgba(0, 229, 255, 0.18);
+  flex-shrink: 0;
+}
+
+.mmEpicsRow {
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  width: 100%;
+}
+
+.mmEpicCol {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-width: 110px;
+  max-width: 150px;
+  flex: 1;
+}
+
+.mmEpicNode {
+  background: rgba(6, 14, 28, 0.82);
+  border: 1px solid;
+  border-radius: 8px;
+  padding: 7px 10px;
+  text-align: center;
+  width: 100%;
+}
+
+.mmEpicLabel {
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.mmFeaturesCol {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+}
+
+.mmFeatureNode {
+  background: rgba(4, 8, 15, 0.65);
+  border-left: 2px solid;
+  border-radius: 4px;
+  padding: 5px 8px;
+  font-size: 11px;
+  color: rgba(226, 240, 251, 0.48);
+  line-height: 1.3;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   FLOATING PANEL LAYOUT
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ── Root shell ─────────────────────────────────────────────────── */
+
+.floatRoot {
+  display: flex;
+  flex-direction: row;
+  flex: 1;
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+}
+
+/* ── Icon sidebar ───────────────────────────────────────────────── */
+
+.iconSidebar {
+  width: 56px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 14px 0;
+  background: rgba(4, 8, 15, 0.92);
+  border-right: 1px solid rgba(0, 229, 255, 0.07);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  z-index: 10;
+}
+
+.sideGroup {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  width: 100%;
+  padding: 0 6px;
+}
+
+.sideSep {
+  width: 28px;
+  height: 1px;
+  background: rgba(0, 229, 255, 0.08);
+  margin: 8px 0;
+  flex-shrink: 0;
+}
+
+.sideBtn {
+  position: relative;
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: rgba(226, 240, 251, 0.25);
+  font-size: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.18s, background 0.18s, border-color 0.18s, box-shadow 0.18s;
+  flex-shrink: 0;
+}
+
+.sideBtn:hover {
+  color: rgba(226, 240, 251, 0.65);
+  background: rgba(0, 229, 255, 0.06);
+  border-color: rgba(0, 229, 255, 0.12);
+}
+
+.sideBtnActive {
+  color: #00e5ff !important;
+  background: rgba(0, 229, 255, 0.10) !important;
+  border-color: rgba(0, 229, 255, 0.28) !important;
+  box-shadow: 0 0 10px rgba(0, 229, 255, 0.14);
+}
+
+.sideDot {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #ffd60a;
+  box-shadow: 0 0 6px rgba(255, 214, 10, 0.65);
+  pointer-events: none;
+}
+
+/* ── Panel stage ────────────────────────────────────────────────── */
+
+.panelStage {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.statePillBar {
+  flex-shrink: 0;
+  padding: 10px 20px;
+  background: rgba(4, 8, 15, 0.82);
+  border-bottom: 1px solid rgba(0, 229, 255, 0.07);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+/* ── Panel deck — the floating card stage ───────────────────────── */
+
+.panelDeck {
+  flex: 1;
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  padding: 16px 20px 12px;
+  min-height: 0;
+}
+
+/* Ghost "stacked cards" — decorative depth effect */
+.panelDeck::before,
+.panelDeck::after {
+  content: "";
+  position: absolute;
+  top: 16px;
+  bottom: 12px;
+  left: 50%;
+  width: min(calc(100% - 40px), 840px);
+  border-radius: 18px;
+  pointer-events: none;
+  transform-origin: 50% 92%;
+}
+
+.panelDeck::before {
+  background: rgba(5, 12, 24, 0.50);
+  border: 1px solid rgba(0, 229, 255, 0.055);
+  transform: translateX(-50%) rotate(-2.8deg) scale(0.975);
+  z-index: 0;
+}
+
+.panelDeck::after {
+  background: rgba(5, 11, 22, 0.38);
+  border: 1px solid rgba(0, 229, 255, 0.032);
+  transform: translateX(-50%) rotate(2deg) scale(0.988);
+  z-index: 1;
+}
+
+/* Wide deck: no ghost cards — full width for output / code */
+.panelDeckWide::before,
+.panelDeckWide::after {
+  display: none;
+}
+
+/* ── Focus panel ────────────────────────────────────────────────── */
+
+.focusPanel {
+  position: relative;
+  z-index: 2;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: rgba(6, 14, 28, 0.88);
+  border: 1px solid rgba(0, 229, 255, 0.14);
+  border-radius: 18px;
+  overflow: hidden;
+  box-shadow:
+    0 0 0 1px rgba(0, 229, 255, 0.04),
+    0 24px 64px rgba(0, 0, 0, 0.60),
+    0 0 40px rgba(0, 229, 255, 0.05);
+  backdrop-filter: blur(28px);
+  -webkit-backdrop-filter: blur(28px);
+  max-width: 840px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+/* Remove max-width constraint in wide mode */
+.panelDeckWide .focusPanel {
+  max-width: none;
+}
+
+/* ── Panel chrome header ────────────────────────────────────────── */
+
+.panelHeader {
+  display: flex;
+  align-items: center;
+  padding: 11px 16px 9px;
+  border-bottom: 1px solid rgba(0, 229, 255, 0.07);
+  flex-shrink: 0;
+  background: rgba(4, 9, 18, 0.50);
+  gap: 12px;
+}
+
+.panelHeaderDots {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.panelHeaderDot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  opacity: 0.65;
+  flex-shrink: 0;
+}
+
+.panelTitleWrap {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+}
+
+.panelTitle {
+  font-size: 10.5px;
+  font-weight: 500;
+  font-family: var(--font-mono, 'JetBrains Mono', monospace);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(226, 240, 251, 0.36);
+}
+
+/* ── Panel body ─────────────────────────────────────────────────── */
+
+.panelBody {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  min-height: 0;
+}
+
+/* Output / Code tabs: no padding, flex column fill */
+.panelBodyFull {
+  padding: 0 !important;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ── Panel overlay — appears inside the floating panel ─────────── */
+
+.panelOverlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(3, 7, 16, 0.90);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-radius: 18px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 40px 48px;
+  z-index: 20;
+  overflow-y: auto;
+}
+
+.overlaySpinner {
+  width: 52px;
+  height: 52px;
+  border: 2px solid rgba(0, 229, 255, 0.10);
+  border-top-color: #00e5ff;
+  border-right-color: rgba(191, 90, 242, 0.55);
+  border-radius: 50%;
+  animation: spin 0.9s linear infinite;
+  box-shadow: 0 0 18px rgba(0, 229, 255, 0.18);
+  flex-shrink: 0;
+}
+
+.overlayTitle {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #e2f0fb;
+  margin: 0;
+  text-align: center;
+  letter-spacing: -0.01em;
+}
+
+.overlayStatus {
+  font-size: 11.5px;
+  color: rgba(226, 240, 251, 0.36);
+  font-family: var(--font-mono, monospace);
+  letter-spacing: 0.03em;
+  margin: 0;
+  text-align: center;
+  min-height: 16px;
+}
+
+/* Tasks checklist */
+.tasksList {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  width: 100%;
+  max-width: 320px;
+  align-self: center;
+}
+
+.taskRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  font-family: var(--font-mono, monospace);
+  color: rgba(226, 240, 251, 0.20);
+  letter-spacing: 0.02em;
+  transition: color 0.3s;
+}
+
+.taskActive {
+  color: #00e5ff !important;
+}
+
+.taskDone {
+  color: rgba(48, 209, 88, 0.65) !important;
+}
+
+.taskIcon {
+  width: 14px;
+  flex-shrink: 0;
+  text-align: center;
+  font-size: 11px;
+}
+
+.taskLabel {
+  flex: 1;
+}
+
+/* Progress bar inside overlay */
+.overlayProgressOuter {
+  width: 100%;
+  max-width: 320px;
+  height: 2px;
+  background: rgba(0, 229, 255, 0.07);
+  border-radius: 99px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.overlayProgressInner {
+  height: 100%;
+  background: linear-gradient(90deg, #00e5ff, #bf5af2);
+  border-radius: 99px;
+  transition: width 0.5s ease;
+  min-width: 4px;
+  box-shadow: 0 0 8px rgba(0, 229, 255, 0.40);
+}
+
+.overlayPercent {
+  font-size: 10px;
+  color: rgba(226, 240, 251, 0.25);
+  letter-spacing: 0.08em;
+  font-family: var(--font-mono, monospace);
+}
+
+/* ── Ambient voice strip at bottom ─────────────────────────────── */
+
+.voiceStrip {
+  flex-shrink: 0;
+  opacity: 0.38;
+  border-top: 1px solid rgba(0, 229, 255, 0.06);
+  transition: opacity 0.4s;
+  overflow: hidden;
+}
+
+.voiceStrip:hover {
+  opacity: 0.70;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   CAROUSEL — 5 visible panels (2 left · center · 2 right)
+   Panels are persistent DOM nodes; CSS transitions drive the animation
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* Container — CSS 3-D perspective applied here */
+.carousel {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  min-height: 0;
+  perspective: 1300px;
+  perspective-origin: 50% 44%;
+}
+
+/* Every slot shares the same transition so swapping a class animates */
+.panelSlot {
+  position: absolute;
+  top: 14px;
+  bottom: 10px;
+  display: flex;
+  flex-direction: column;
+  transition:
+    left      0.52s cubic-bezier(0.4, 0, 0.2, 1),
+    width     0.52s cubic-bezier(0.4, 0, 0.2, 1),
+    transform 0.52s cubic-bezier(0.4, 0, 0.2, 1),
+    opacity   0.52s ease;
+  /* z-index intentionally NOT transitioned — snaps instantly */
+}
+
+/* ── Hidden (off-screen) — left side ───────────────────────────── */
+.slotHiddenL {
+  left: -24%;
+  width: 22%;
+  transform: rotateY(58deg) scale(0.52);
+  opacity: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+
+/* ── Far left (-2) ──────────────────────────────────────────────── */
+.slotFarLeft {
+  left: 0%;
+  width: 22%;
+  transform: rotateY(44deg) scale(0.64);
+  opacity: 0.16;
+  z-index: 3;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.slotFarLeft:hover { opacity: 0.30; }
+
+/* ── Near left (-1) ─────────────────────────────────────────────── */
+.slotNearLeft {
+  left: 9%;
+  width: 32%;
+  transform: rotateY(26deg) scale(0.80);
+  opacity: 0.34;
+  z-index: 6;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.slotNearLeft:hover { opacity: 0.54; }
+
+/* ── Center (0 / active) ────────────────────────────────────────── */
+.slotCenter {
+  left: 27%;
+  width: 46%;
+  transform: rotateY(0deg) scale(1);
+  opacity: 1;
+  z-index: 10;
+  pointer-events: auto;
+  cursor: default;
+}
+
+/* ── Near right (+1) ────────────────────────────────────────────── */
+.slotNearRight {
+  left: 59%;
+  width: 32%;
+  transform: rotateY(-26deg) scale(0.80);
+  opacity: 0.34;
+  z-index: 6;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.slotNearRight:hover { opacity: 0.54; }
+
+/* ── Far right (+2) ─────────────────────────────────────────────── */
+.slotFarRight {
+  left: 78%;
+  width: 22%;
+  transform: rotateY(-44deg) scale(0.64);
+  opacity: 0.16;
+  z-index: 3;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.slotFarRight:hover { opacity: 0.30; }
+
+/* ── Hidden (off-screen) — right side ──────────────────────────── */
+.slotHiddenR {
+  left: 102%;
+  width: 22%;
+  transform: rotateY(-58deg) scale(0.52);
+  opacity: 0;
+  z-index: 0;
+  pointer-events: none;
 }

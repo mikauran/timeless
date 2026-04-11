@@ -1,186 +1,273 @@
-# Timeless Architecture
+# Timeless — Holographic Meeting Intelligence
 
-## GPT-Lab's Timeless Vision
+> **v0.2** · AI-powered meeting system that turns spoken requirements into a running web application in real time.
 
-<div align="center">
-  <img src="timeless_ui/public/logo/timeless_logo-removebg.png" alt="Timeless Logo" height="150" />
-</div>
+Timeless listens to your team's conversation, extracts software requirements from speech, evaluates their completeness, and autonomously generates and deploys a working web application — all displayed on a futuristic holographic floating-panel interface.
 
 ---
 
-Timeless Architecture is an AI-driven modular meeting assistant designed to streamline software development discussions. It seamlessly integrates multiple services—including real-time voice transcription, AI-powered meeting management, and a live dashboard—to ensure project discussions are effectively captured, processed, and acted upon.
+## What It Does
+
+1. **Listen** — A microphone captures the meeting. Faster-Whisper or OpenAI Whisper transcribes speech continuously.
+2. **Understand** — An LLM analyses each transcription to extract requirements, update meeting notes, and detect when the discussion is complete.
+3. **Evaluate** — The system reviews requirements for gaps and provides proactive advisor suggestions to the team.
+4. **Generate** — When requirements are approved, the OpenCode agent writes, installs, and launches a full-stack web application.
+5. **Display** — A Next.js holographic UI shows all panels (Requirements, Epics, Mind Map, Notes, Advisor, Output, Code) in an animated 3-D carousel.
 
 ---
 
-## Overview
+## Architecture
 
-Timeless Architecture consists of several key components:
+```
+┌──────────────────────────────────────────────────────────┐
+│                    Timeless UI  :3000                     │
+│           Next.js 14 · Holographic carousel UI           │
+│     SSE listener ──► projectDataProvider component       │
+└────────────────────────┬─────────────────────────────────┘
+                         │ SSE  /  REST
+        ┌────────────────▼────────────────┐
+        │    Manager Service  :8082        │
+        │  FastAPI · single worker        │
+        │  LLM orchestration · state mgmt │
+        └──┬────────────┬────────────┬───┘
+           │            │            │
+  ┌────────▼───┐  ┌─────▼─────┐  ┌──▼──────────────────┐
+  │Transcription│  │Requirements│  │  OpenCode Service   │
+  │Service :8080│  │Service :8081│  │  (web codegen):8084 │
+  │Whisper STT  │  │FastAPI      │  │  Writes & runs app  │
+  └────────────┘  └────────────┘  └─────────────────────┘
+```
 
-- **Manager Service**: Handles meeting state transitions, processes transcriptions using LLMs, and initiates code generation when required.
-- **Requirements Service**: Dynamically updates project requirements based on meeting transcriptions to ensure comprehensive tracking of evolving software needs.
-- **Transcription Service**: Provides real-time speech-to-text functionality with support for local transcription models (faster-whisper) and cloud-based APIs, configurable for CPU or GPU acceleration.
-- **Timeless UI**: A Next.js-powered frontend that offers a live dashboard with real-time updates on meeting discussions, project requirements, and current development state via Server-Sent Events (SSE).
-- **Bootstrap Script**: The `bootstrap.py` script simplifies setup by creating a virtual environment, installing dependencies, and launching all core services.
+All backend services are Python/FastAPI. Communication is via REST and Server-Sent Events (SSE).
 
 ---
 
-## Features
+## Prerequisites
 
-- **Modular Multi-Service Architecture**: Each service runs independently, allowing easy customization and scalability.
-- **Real-Time Transcription**: Captures and processes voice input with customizable transcription methods.
-- **AI-Powered Meeting Management**: Utilizes LLMs (OpenAI, OpenRouter, or Ollama) for summarizing discussions, updating meeting notebooks, and triggering code generation.
-- **Live Dashboard**: Displays meeting summaries, project states, and requirements in real time using SSE.
-- **Flexible Configuration**: Easily switch between different LLM providers and transcription methods using environment variables.
-- **Robust API-Driven Communication**: Services interact through REST APIs for smooth data exchange and integration.
+| Requirement | Version | Notes |
+|---|---|---|
+| Python | 3.10 + | 3.11 recommended |
+| Node.js | 18 + | For the Next.js frontend |
+| npm | 9 + | Installed with Node.js |
+| Microphone | — | Required for speech input |
+| Speakers / headphones | — | Required for TTS welcome message |
+| OpenAI API key | — | Or OpenRouter / local Ollama |
 
 ---
 
 ## Installation
 
-### Prerequisites (Tampere University machines)
+### 1. Clone the repository
 
-1. **Install MyApps, Python, and Node.js**
-   - Open Software Center and install:
-     - MyApps
-     - Python (3.8+)
-     - Node.js (latest LTS)
-
-### Setup
-
-1. **Clone the Repository**
-
-   - Open a terminal (PowerShell recommended)
-   - Navigate to your MyApps folder:
-     ```powershell
-     cd C:/<username>/MyApps
-     ```
-   - Clone the repository:
-     ```powershell
-     git clone https://github.com/GPT-Laboratory/timeless-architecture-base.git
-     cd timeless-architecture-base
-     ```
-
-2. **Configure Environment**
-
-   - Rename `example.env` to `.env`:
-     ```powershell
-     Rename-Item example.env .env
-     ```
-   - Open `.env` in a text editor and insert your OpenAI API key and other required settings.
-
-3. **Run the Bootstrap Script**
-   - The bootstrap script will create a virtual environment, install all dependencies, and start all services.
-   - To start the backend and frontend (UI), run:
-     ```powershell
-     python bootstrap.py --web
-     ```
-   - To run only backend services (no UI), omit the `--web` flag:
-     ```powershell
-     python bootstrap.py
-     ```
-   - Use `--cpu` or `--gpu` to specify Whisper transcription mode if needed:
-     ```powershell
-     python bootstrap.py --web --cpu
-     python bootstrap.py --web --gpu
-     ```
-
----
-
-Use `--web` to also start up the Timeless UI.
-
----
-
-## Configuration
-
-Create an `.env` file in the root directory and configure your settings:
-
+```bash
+git clone https://github.com/GPT-Laboratory/timeless-architecture-base.git
+cd timeless-architecture-base
 ```
-# Service Ports
-MANAGER_SERVICE_PORT=8082
-REQUIREMENTS_SERVICE_PORT=8081
-TRANSCRIPTION_SERVICE_PORT=8080
 
-# LLM Provider (choose from: openrouter, openai, ollama)
-LLM_PROVIDER=ollama
+### 2. Configure environment
 
-# API Keys and Model Configurations
-OPENROUTER_API_KEY=your-openrouter-key
-OPENAI_API_KEY=your-openai-key
-OLLAMA_URL=http://localhost:11434/v1
-
-# Transcription Configuration
-TRANSCRIPTION_METHOD=local
-TASK=translate
-LOCAL_MODEL_SIZE=medium
-USE_CUDA=True
-AUDIO_DEVICE_INDEX=1
+```bash
+cp .env.example .env
 ```
+
+Open `.env` and fill in your values. Minimum required:
+
+```env
+LLM_PROVIDER=openai
+OPENAI_API_KEY=sk-...
+OPENAI_GENERAL_MODEL=gpt-4o-mini
+TRANSCRIPTION_METHOD=rest
+OPENCODE_MODEL=openai/gpt-4o
+```
+
+See `.env.example` for all options including OpenRouter and Ollama.
+
+### 3. Run the installer / launcher
+
+```bash
+# Standard setup — OpenAI Whisper API for transcription (recommended)
+python bootstrap.py --web --opencode
+
+# CPU transcription (local faster-whisper, no API cost)
+python bootstrap.py --web --opencode --cpu
+
+# GPU transcription (CUDA)
+python bootstrap.py --web --opencode --gpu
+```
+
+`bootstrap.py` will:
+- Create a Python virtual environment (`venv/`)
+- Install all Python dependencies from `requirements.txt`
+- Run `npm install` in `timeless_ui/` (first run only)
+- Start all backend services
+- Start the Next.js dev server
+- Open your browser at `http://localhost:3000`
 
 ---
 
 ## Usage
 
-Start the assistant with:
+1. Open `http://localhost:3000` in your browser.
+2. Click the **Initialise** button — Timeless greets you and activates the microphone.
+3. Start your meeting. Speak naturally about the software you want to build.
+4. Watch the panels update in real time:
+   - **Requirements** — extracted feature list
+   - **Epics** — grouped feature epics
+   - **Mind Map** — visual tree of the product
+   - **Notes** — auto-generated meeting minutes
+   - **Advisor** — gap analysis and suggestions
+   - **Output** — live preview of the generated app
+   - **Code** — browse the generated source files
+5. When the LLM decides requirements are complete, code generation starts automatically — a progress overlay appears on the active panel.
+6. The generated app opens in the **Output** panel once running.
 
+### Panel Navigation
+
+- Click any side-panel in the carousel to bring it to focus (animated slide).
+- Use the **icon sidebar** on the left to jump directly to any panel.
+- Click **Retry** on the error screen if the manager service isn't running.
+
+---
+
+## Service Ports
+
+| Service | Port | Description |
+|---|---|---|
+| Next.js UI | 3000 | Holographic frontend |
+| Transcription Service | 8080 | Whisper STT + TTS + mic control |
+| Requirements Service | 8081 | Requirement extraction & storage |
+| Manager Service | 8082 | LLM orchestration, SSE, state |
+| OpenCode Service | 8084 | Web app code generation & runner |
+
+---
+
+## LLM Provider Options
+
+### OpenAI (default)
+```env
+LLM_PROVIDER=openai
+OPENAI_API_KEY=sk-...
+OPENAI_GENERAL_MODEL=gpt-4o-mini
+OPENCODE_MODEL=openai/gpt-4o
+```
+
+### OpenRouter
+```env
+LLM_PROVIDER=openrouter
+OPENROUTER_API_KEY=sk-or-...
+OPENROUTER_MODEL=openai/gpt-4o
+OPENCODE_MODEL=openai/gpt-4o
+```
+
+### Ollama (fully local)
+```env
+LLM_PROVIDER=ollama
+OLLAMA_URL=http://localhost:11434/v1
+OLLAMA_MODEL=llama3
+```
+> Note: code generation quality depends heavily on model capability. GPT-4o or equivalent recommended.
+
+---
+
+## Transcription Options
+
+| Mode | Flag | Requirement |
+|---|---|---|
+| OpenAI Whisper API | *(default)* | `OPENAI_API_KEY` in `.env` |
+| Local CPU | `--cpu` | Downloads faster-whisper model on first run |
+| Local GPU (CUDA) | `--gpu` | CUDA-enabled PyTorch |
+
+Set `TRANSCRIPTION_METHOD=rest` for API or `local` for on-device.
+
+---
+
+## Project Structure
+
+```
+timeless-architecture-base/
+├── bootstrap.py                  # One-command installer & launcher
+├── requirements.txt              # Python dependencies
+├── .env.example                  # Environment template
+│
+├── manager_service/
+│   └── manager_service.py        # Core orchestration (FastAPI)
+│
+├── transcription_service/
+│   └── transcribe_service.py     # Whisper STT + TTS + mic (FastAPI)
+│
+├── requirements_service/
+│   └── requirements_manager.py   # Requirement storage (FastAPI)
+│
+├── opencode/
+│   └── web_code_generation_service.py  # OpenCode agent (FastAPI)
+│
+└── timeless_ui/                  # Next.js 14 holographic frontend
+    └── src/app/
+        ├── components/           # React components
+        └── styles/               # CSS modules
+```
+
+---
+
+## Troubleshooting
+
+**"Cannot reach Timeless services" on UI**
+The manager service (port 8082) is not running. Start it:
 ```bash
-python main.py
+python bootstrap.py --web --opencode
 ```
 
-If using WhatsApp integration, link your account using the QR code provided by Neonize in the console.
+**Microphone not detected**
+Check your system audio input permissions and ensure a microphone is selected as the default input device.
+
+**Code generation overlay not appearing**
+Ensure only one instance of the manager service is running (the service must use a single worker). If you started it manually with `workers > 1`, restart with `python manager_service/manager_service.py`.
+
+**`ModuleNotFoundError` on startup**
+Run from inside the activated virtual environment or use `python bootstrap.py` which activates the venv automatically.
 
 ---
 
-## API Services
+## Tech Stack
 
-### **Manager Service API**
-
-- Handles meeting transcription processing, state transitions, and triggers code generation.
-- Provides a **Server-Sent Events (SSE)** stream for real-time meeting updates.
-
-### **Requirements Service API**
-
-- Stores meeting discussions and updates software requirements dynamically.
-- Provides an API to retrieve the latest requirements list for a given meeting.
-
-### **Transcription Service API**
-
-- Captures live audio, transcribes it using Whisper, and sends results to the manager service.
-- Supports both local (faster-whisper) and cloud-based transcription (OpenAI Whisper API).
+| Layer | Technology |
+|---|---|
+| Frontend | Next.js 14, React 18, TypeScript, CSS Modules |
+| UI Fonts | Space Grotesk, JetBrains Mono |
+| Backend | Python 3.11, FastAPI, Uvicorn |
+| LLM | OpenAI GPT-4o / OpenRouter / Ollama |
+| Speech-to-Text | OpenAI Whisper API / faster-whisper |
+| Text-to-Speech | OpenAI TTS |
+| Code Generation | OpenCode agent |
+| Realtime comms | Server-Sent Events (SSE) |
 
 ---
 
-## File Structure
+## Roadmap
 
-```
-koodattu-varjotimeless-sjk/
-├── bootstrap.py        # Sets up environment and starts services
-├── example.env         # Sample environment configuration
-├── requirements.txt    # Python dependencies
-├── docs/               # API documentation for services
-├── manager_service/    # Manages meeting state and discussions
-├── requirements_service/ # Manages evolving project requirements
-├── timeless_ui/        # Next.js frontend dashboard
-└── transcription_service/ # Voice transcription and processing
-```
-
----
-
-## Contributing
-
-1. Fork the repository.
-2. Create a feature branch: `git checkout -b feature-name`
-3. Commit your changes: `git commit -m "Add feature"`
-4. Push to the branch: `git push origin feature-name`
-5. Open a Pull Request.
+- [ ] Multi-language meeting support
+- [ ] Session export (PDF requirements doc, code zip)
+- [ ] Persistent project history across sessions
+- [ ] Voice commands for panel navigation
+- [ ] Avatar hologram integration (SadTalker)
+- [ ] Multi-user / remote meeting support
 
 ---
 
 ## License
 
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+MIT License — see [LICENSE](LICENSE) for details.
 
 ---
 
-## Contact
+## Citation
 
-For questions or support, open an issue or reach out to Juha Ala-Rantala at [juha.ala-rantala@tuni.fi](mailto:juha.ala-rantala@tuni.fi).
+If you use Timeless in your research, please cite:
+
+```
+@software{timeless2026,
+  title  = {Timeless: Holographic Meeting Intelligence},
+  year   = {2026},
+  url    = {https://github.com/GPT-Laboratory/timeless-architecture-base}
+}
+```

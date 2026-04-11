@@ -7,3 +7,6 @@ python-dotenv
 pyaudio
 sounddevice
 webrtcvad-wheels
+numpy
+aiohttp
+motor

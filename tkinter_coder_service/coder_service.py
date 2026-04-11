@@ -306,7 +306,9 @@ def main():
     # Use: uvicorn server:app --host 0.0.0.0 --port SERVICE_PORT
     import uvicorn
     logging.info(f"Starting server on port {SERVICE_PORT}")
-    uvicorn.run(app, host="0.0.0.0", port=SERVICE_PORT)
+    print(f"Starting Tkinter Service on port {SERVICE_PORT}")
+    # uvicorn.run(app, host="0.0.0.0", port=SERVICE_PORT)
+    uvicorn.run("coder_service:app", host="0.0.0.0", port=int(SERVICE_PORT), workers=1, reload=False)
 
 if __name__ == "__main__":
     main()

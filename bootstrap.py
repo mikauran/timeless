@@ -13,27 +13,23 @@ def create_venv(venv_dir="venv"):
 
 def get_venv_paths(venv_dir="venv"):
     if os.name == "nt":
-        # Windows paths
         python_path = os.path.join(venv_dir, "Scripts", "python.exe")
     else:
-        # macOS/Linux paths
         python_path = os.path.join(venv_dir, "bin", "python")
     return python_path
 
 def install_requirements(python_path, args):
-    # Upgrade pip using "python -m pip"
     print("Upgrading pip...")
     subprocess.check_call([python_path, "-m", "pip", "install", "--upgrade", "pip"])
 
     print("Installing base requirements from requirements.txt...")
     subprocess.check_call([python_path, "-m", "pip", "install", "-r", "requirements.txt"])
 
-    # Optionally install additional packages for transcription
     if args.cpu:
         print("Installing faster-whisper for CPU support...")
         subprocess.check_call([python_path, "-m", "pip", "install", "faster-whisper"])
     elif args.gpu:
-        print("Installing faster-whisper and CUDA-enabled PyTorch packages for GPU support...")
+        print("Installing faster-whisper and CUDA-enabled PyTorch for GPU support...")
         subprocess.check_call([python_path, "-m", "pip", "install", "faster-whisper"])
         subprocess.check_call([
             python_path,
@@ -46,15 +42,19 @@ def install_requirements(python_path, args):
             "https://download.pytorch.org/whl/cu118"
         ])
 
-def start_services(python_path, also_naivecoder=False):
+def start_services(python_path, also_codegen=False, also_opencode=False):
     services = [
         {"name": "Manager Service", "script": os.path.join("manager_service", "manager_service.py")},
         {"name": "Requirements Service", "script": os.path.join("requirements_service", "requirements_manager.py")},
         {"name": "Transcription Service", "script": os.path.join("transcription_service", "transcribe_service.py")},
     ]
-    if also_naivecoder:
+    if also_codegen:
         services.append(
-                {"name": "Code Generator Service", "script": os.path.join("tkinter_coder_service", "coder_service.py")}
+            {"name": "CodeGen Service", "script": os.path.join("codegen_service", "codegen_service.py")}
+        )
+    if also_opencode:
+        services.append(
+            {"name": "OpenCode Service", "script": os.path.join("opencode", "web_code_generation_service.py")}
         )
     processes = []
     for service in services:
@@ -75,7 +75,6 @@ def npm_install_if_needed(ui_dir):
 def start_nextjs_dev(ui_dir):
     print("Starting Next.js dev server in timeless_ui...")
     npm_cmd = "npm.cmd" if os.name == "nt" else "npm"
-    # Start as a background process
     proc = subprocess.Popen([npm_cmd, "run", "dev"], cwd=ui_dir, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     return proc
 
@@ -103,7 +102,9 @@ def main():
     group.add_argument("--cpu", action="store_true", help="Install faster-whisper for CPU-only support.")
     group.add_argument("--gpu", action="store_true", help="Install faster-whisper and CUDA-enabled PyTorch for GPU support.")
     parser.add_argument("--web", action="store_true", help="Install and start the frontend (timeless_ui)")
+    parser.add_argument("--codegen", action="store_true", help="Start the new codegen backend service (codegen_service)")
     parser.add_argument("--naivecoder", action="store_true", help="Start the naive coder backend (tkinter_coder_service)")
+    parser.add_argument("--opencode", action="store_true", help="Start the open code agent backend (web_code_generation_service)")
     args = parser.parse_args()
 
     venv_dir = "venv"
@@ -115,18 +116,15 @@ def main():
     nextjs_proc = None
 
     if args.web:
-        # --- Frontend setup ---
         npm_install_if_needed(timeless_ui_dir)
-        # Start Next.js dev server
         nextjs_proc = start_nextjs_dev(timeless_ui_dir)
-        # Wait for Next.js to be ready, then open browser
         if wait_for_nextjs_ready():
             open_browser("http://localhost:3000")
         else:
             print("Warning: Next.js dev server did not start in time.")
 
-    # Start backend services
-    processes = start_services(python_path, also_naivecoder=args.naivecoder)
+    # processes = start_services(python_path, also_codegen=args.codegen)
+    processes = start_services(python_path, also_codegen=args.codegen, also_opencode=args.opencode)
 
     print("All services are running. Press Ctrl+C to stop.")
     try:
