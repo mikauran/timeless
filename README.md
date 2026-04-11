@@ -260,11 +260,13 @@ MIT License — see [LICENSE](LICENSE) for details.
 
 ---
 
-## Author
+## Authors
 
-**Shahbaz Siddeeq**
-PhD Researcher · Tampere University
-[github.com/shahbazsiddeeq](https://github.com/shahbazsiddeeq)
+| Name | Role |
+|---|---|
+| **Shahbaz Siddeeq** | PhD Researcher · Tampere University |
+| **Jussi Rasku** | Tampere University |
+| **Juha Ala-Rantala** | Tampere University |
 
 ---
 
@@ -274,7 +276,7 @@ If you use Timeless in your research, please cite:
 
 ```
 @software{timeless2026,
-  author = {Siddeeq, Shahbaz},
+  author = {Siddeeq, Shahbaz and Rasku, Jussi and Ala-Rantala, Juha},
   title  = {Timeless: Holographic Meeting Intelligence for End-to-End Software Development},
   year   = {2026},
   url    = {https://github.com/shahbazsiddeeq/timeless-end-to-end-software-development}
