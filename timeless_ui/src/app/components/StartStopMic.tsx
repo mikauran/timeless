@@ -87,17 +87,17 @@ export default function StartStopMic({ onMicStarted }: { onMicStarted?: () => vo
           font-size: 3.2rem;
           font-weight: 700;
           letter-spacing: 0.22em;
-          color: #e2f0fb;
+          color: #0d1e35;
           margin: 0;
           text-shadow:
-            0 0 30px rgba(0,229,255,0.35),
-            0 0 60px rgba(0,229,255,0.12);
+            0 0 30px rgba(0,149,200,0.18),
+            0 0 60px rgba(0,149,200,0.08);
           font-family: var(--font-mono, 'JetBrains Mono', monospace);
         }
 
         .holo-subtitle {
           font-size: 0.85rem;
-          color: rgba(226,240,251,0.38);
+          color: rgba(13,30,53,0.40);
           margin: 0;
           letter-spacing: 0.18em;
           text-transform: uppercase;
@@ -122,12 +122,12 @@ export default function StartStopMic({ onMicStarted }: { onMicStarted?: () => vo
           position: absolute;
           inset: 0;
           border-radius: 50%;
-          border: 1px solid rgba(0,229,255,0.25);
+          border: 1px solid rgba(0,149,200,0.25);
           animation: ringIdle 3s ease-in-out infinite;
         }
 
         .holo-ring-1 { animation-delay: 0s; }
-        .holo-ring-2 { animation-delay: 1.5s; border-color: rgba(191,90,242,0.20); }
+        .holo-ring-2 { animation-delay: 1.5s; border-color: rgba(91,127,212,0.20); }
 
         @keyframes ringIdle {
           0%, 100% { transform: scale(1);    opacity: 0.6; }
@@ -139,19 +139,19 @@ export default function StartStopMic({ onMicStarted }: { onMicStarted?: () => vo
           width: 120px;
           height: 120px;
           border-radius: 50%;
-          background: rgba(0,229,255,0.07);
-          border: 1px solid rgba(0,229,255,0.40);
+          background: rgba(0,149,200,0.07);
+          border: 1px solid rgba(0,149,200,0.40);
           display: flex;
           align-items: center;
           justify-content: center;
           transition: background 0.2s, border-color 0.2s, box-shadow 0.2s;
-          box-shadow: 0 0 24px rgba(0,229,255,0.12), inset 0 0 16px rgba(0,229,255,0.04);
+          box-shadow: 0 0 24px rgba(0,149,200,0.10), inset 0 0 16px rgba(0,149,200,0.04);
         }
 
         .holo-btn:hover .holo-btn-core {
-          background: rgba(0,229,255,0.12);
-          border-color: rgba(0,229,255,0.70);
-          box-shadow: 0 0 40px rgba(0,229,255,0.28), inset 0 0 24px rgba(0,229,255,0.08);
+          background: rgba(0,149,200,0.12);
+          border-color: rgba(0,149,200,0.65);
+          box-shadow: 0 0 36px rgba(0,149,200,0.20), inset 0 0 20px rgba(0,149,200,0.07);
         }
 
         .holo-btn-label {
@@ -159,9 +159,9 @@ export default function StartStopMic({ onMicStarted }: { onMicStarted?: () => vo
           font-weight: 600;
           letter-spacing: 0.12em;
           text-transform: uppercase;
-          color: #00e5ff;
+          color: #0095c8;
           font-family: var(--font-mono, monospace);
-          text-shadow: 0 0 10px rgba(0,229,255,0.55);
+          text-shadow: 0 0 10px rgba(0,149,200,0.30);
         }
 
         /* ── Speaking ── */
@@ -182,13 +182,13 @@ export default function StartStopMic({ onMicStarted }: { onMicStarted?: () => vo
           position: absolute;
           inset: 0;
           border-radius: 50%;
-          border: 1px solid rgba(0,229,255,0.40);
+          border: 1px solid rgba(0,149,200,0.40);
           animation: ringExpand 2.2s ease-out infinite;
         }
 
-        .r1 { animation-delay: 0s;    border-color: rgba(0,229,255,0.40); }
-        .r2 { animation-delay: 0.70s; border-color: rgba(191,90,242,0.30); }
-        .r3 { animation-delay: 1.40s; border-color: rgba(0,229,255,0.20); }
+        .r1 { animation-delay: 0s;    border-color: rgba(0,149,200,0.40); }
+        .r2 { animation-delay: 0.70s; border-color: rgba(91,127,212,0.30); }
+        .r3 { animation-delay: 1.40s; border-color: rgba(0,149,200,0.20); }
 
         @keyframes ringExpand {
           0%   { transform: scale(0.50); opacity: 0.9; }
@@ -199,14 +199,14 @@ export default function StartStopMic({ onMicStarted }: { onMicStarted?: () => vo
           position: absolute;
           inset: 36px;
           border-radius: 50%;
-          background: radial-gradient(circle, rgba(0,229,255,0.55) 0%, rgba(0,229,255,0.10) 100%);
-          border: 1px solid rgba(0,229,255,0.55);
-          box-shadow: 0 0 30px rgba(0,229,255,0.35);
+          background: radial-gradient(circle, rgba(0,149,200,0.45) 0%, rgba(0,149,200,0.08) 100%);
+          border: 1px solid rgba(0,149,200,0.45);
+          box-shadow: 0 0 24px rgba(0,149,200,0.22);
         }
 
         .holo-speaking-text {
           font-size: 0.78rem;
-          color: rgba(226,240,251,0.40);
+          color: rgba(13,30,53,0.42);
           margin: 0;
           letter-spacing: 0.14em;
           text-transform: uppercase;

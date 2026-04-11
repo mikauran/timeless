@@ -4,8 +4,8 @@
   justify-content: space-between;
   height: 44px;
   padding: 0 16px;
-  background: rgba(4, 8, 15, 0.92);
-  border-bottom: 1px solid rgba(0, 229, 255, 0.07);
+  background: rgba(255, 255, 255, 0.92);
+  border-bottom: 1px solid rgba(0, 149, 200, 0.12);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   flex-shrink: 0;
@@ -25,7 +25,7 @@
   font-family: var(--font-mono, 'JetBrains Mono', monospace);
   letter-spacing: 0.22em;
   text-transform: uppercase;
-  color: rgba(226, 240, 251, 0.40);
+  color: rgba(13, 30, 53, 0.45);
   text-align: center;
   flex: 1;
   margin: 0;
