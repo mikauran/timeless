@@ -1,41 +1,41 @@
 /* ═══════════════════════════════════════════════════════════════════
    TIMELESS — Holographic Command Interface
-   globals.css  ·  Light sky theme
+   globals.css
    ═══════════════════════════════════════════════════════════════════ */
 
 :root {
   /* ── Background ── */
-  --void:          #eef6fd;
-  --panel:         rgba(255, 255, 255, 0.90);
-  --surface:       rgba(235, 247, 255, 0.75);
-  --surface-hover: rgba(220, 240, 255, 0.92);
+  --void:          #04080f;
+  --panel:         rgba(6, 14, 28, 0.88);
+  --surface:       rgba(8, 18, 36, 0.70);
+  --surface-hover: rgba(10, 22, 46, 0.92);
 
   /* ── Accent palette ── */
-  --cyan:        #0095c8;
-  --cyan-dim:    rgba(0, 149, 200, 0.45);
-  --cyan-glow:   rgba(0, 149, 200, 0.14);
-  --purple:      #5b7fd4;
-  --purple-dim:  rgba(91, 127, 212, 0.40);
-  --purple-glow: rgba(91, 127, 212, 0.14);
-  --green:       #1a9e45;
-  --amber:       #d97706;
-  --amber-dim:   rgba(217, 119, 6, 0.15);
-  --red:         #dc2626;
+  --cyan:        #00e5ff;
+  --cyan-dim:    rgba(0, 229, 255, 0.45);
+  --cyan-glow:   rgba(0, 229, 255, 0.18);
+  --purple:      #bf5af2;
+  --purple-dim:  rgba(191, 90, 242, 0.45);
+  --purple-glow: rgba(191, 90, 242, 0.18);
+  --green:       #30d158;
+  --amber:       #ffd60a;
+  --amber-dim:   rgba(255, 214, 10, 0.18);
+  --red:         #ff453a;
 
   /* ── Text ── */
-  --text-1: #0d1e35;
-  --text-2: rgba(13, 30, 53, 0.55);
-  --text-3: rgba(13, 30, 53, 0.30);
+  --text-1: #e2f0fb;
+  --text-2: rgba(226, 240, 251, 0.55);
+  --text-3: rgba(226, 240, 251, 0.28);
 
   /* ── Borders ── */
-  --border:        rgba(0, 149, 200, 0.15);
-  --border-bright: rgba(0, 149, 200, 0.35);
+  --border:        rgba(0, 229, 255, 0.10);
+  --border-bright: rgba(0, 229, 255, 0.28);
 
   /* ── Shadows / glows ── */
-  --shadow-panel: 0 0 0 1px var(--border), 0 8px 32px rgba(0, 80, 140, 0.10);
-  --glow-cyan:    0 0 16px rgba(0, 149, 200, 0.18);
-  --glow-purple:  0 0 16px rgba(91, 127, 212, 0.18);
-  --glow-amber:   0 0 12px rgba(217, 119, 6, 0.15);
+  --shadow-panel: 0 0 0 1px var(--border), 0 16px 48px rgba(0,0,0,0.7);
+  --glow-cyan:    0 0 24px rgba(0, 229, 255, 0.28);
+  --glow-purple:  0 0 24px rgba(191, 90, 242, 0.28);
+  --glow-amber:   0 0 16px rgba(255, 214, 10, 0.22);
 
   /* ── Fonts ── */
   --font-ui:   'Space Grotesk', var(--font-space-grotesk, sans-serif), sans-serif;
@@ -52,7 +52,7 @@
 html {
   font-size: 62.5%;
   overflow-x: hidden;
-  color-scheme: light;
+  color-scheme: dark;
 }
 
 html, body {
@@ -60,7 +60,7 @@ html, body {
   overflow-x: hidden;
 }
 
-/* ── Body: soft sky background + subtle dot mesh ─────────────────── */
+/* ── Body: void background + animated dot mesh ───────────────────── */
 body {
   font-family: var(--font-ui);
   font-size: 1.4rem;
@@ -72,15 +72,15 @@ body {
   position: relative;
 }
 
-/* Layered background: soft sky blobs + moving dot grid */
+/* Layered background: aurora blobs + moving dot grid */
 body::before {
   content: "";
   position: fixed;
   inset: 0;
   background-image:
-    radial-gradient(ellipse 70% 50% at 8%  12%, rgba(0, 149, 200, 0.08) 0%, transparent 55%),
-    radial-gradient(ellipse 50% 40% at 92% 85%, rgba(91, 127, 212, 0.07) 0%, transparent 55%),
-    radial-gradient(circle, rgba(0, 149, 200, 0.07) 1px, transparent 1px);
+    radial-gradient(ellipse 70% 50% at 8%  12%, rgba(0, 229, 255, 0.055) 0%, transparent 55%),
+    radial-gradient(ellipse 50% 40% at 92% 85%, rgba(191, 90, 242, 0.055) 0%, transparent 55%),
+    radial-gradient(circle, rgba(0, 229, 255, 0.09) 1px, transparent 1px);
   background-size: 100% 100%, 100% 100%, 28px 28px;
   animation: meshDrift 45s linear infinite;
   pointer-events: none;
@@ -109,9 +109,9 @@ a:hover {
 /* Thin scrollbars throughout */
 * {
   scrollbar-width: thin;
-  scrollbar-color: rgba(0, 149, 200, 0.20) transparent;
+  scrollbar-color: rgba(0, 229, 255, 0.15) transparent;
 }
 
 *::-webkit-scrollbar        { width: 4px; height: 4px; }
 *::-webkit-scrollbar-track  { background: transparent; }
-*::-webkit-scrollbar-thumb  { background: rgba(0, 149, 200, 0.20); border-radius: 2px; }
+*::-webkit-scrollbar-thumb  { background: rgba(0, 229, 255, 0.15); border-radius: 2px; }
