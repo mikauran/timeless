@@ -263,7 +263,7 @@ MIT License — see [LICENSE](LICENSE) for details.
 ## Author
 
 **Shahbaz Siddeeq**
-PhD Researcher · Tel Aviv University
+PhD Researcher · Tampere University
 [github.com/shahbazsiddeeq](https://github.com/shahbazsiddeeq)
 
 ---
