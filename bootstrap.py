@@ -3,6 +3,7 @@ import sys
 import subprocess
 import time
 import argparse
+import shutil
 
 def create_venv(venv_dir="venv"):
     if not os.path.exists(venv_dir):
@@ -78,6 +79,14 @@ def start_nextjs_dev(ui_dir):
     proc = subprocess.Popen([npm_cmd, "run", "dev"], cwd=ui_dir, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     return proc
 
+
+def ensure_opencode_available():
+    if shutil.which("opencode"):
+        return
+    raise RuntimeError(
+        "The 'opencode' CLI was not found on PATH. Install it before using --opencode: npm install -g opencode-ai"
+    )
+
 def wait_for_nextjs_ready(port=3000, timeout=60):
     import socket
     start = time.time()
@@ -106,6 +115,9 @@ def main():
     parser.add_argument("--naivecoder", action="store_true", help="Start the naive coder backend (tkinter_coder_service)")
     parser.add_argument("--opencode", action="store_true", help="Start the open code agent backend (web_code_generation_service)")
     args = parser.parse_args()
+
+    if args.opencode:
+        ensure_opencode_available()
 
     venv_dir = "venv"
     create_venv(venv_dir)

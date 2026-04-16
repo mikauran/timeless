@@ -49,6 +49,7 @@ All backend services are Python/FastAPI. Communication is via REST and Server-Se
 | Python | 3.10 + | 3.11 recommended |
 | Node.js | 18 + | For the Next.js frontend |
 | npm | 9 + | Installed with Node.js |
+| OpenCode CLI | latest | Required for `--opencode`; install with `npm install -g opencode-ai` |
 | Microphone | — | Required for speech input |
 | Speakers / headphones | — | Required for TTS welcome message |
 | OpenAI API key | — | Or OpenRouter / local Ollama |
@@ -102,6 +103,12 @@ python bootstrap.py --web --opencode --gpu
 - Start all backend services
 - Start the Next.js dev server
 - Open your browser at `http://localhost:3000`
+
+If you use `--opencode`, install the OpenCode CLI first:
+
+```bash
+npm install -g opencode-ai
+```
 
 ---
 

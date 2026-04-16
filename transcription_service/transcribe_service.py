@@ -51,10 +51,10 @@ router = APIRouter(prefix="/api/v0")
 
 SERVICE_PORT = os.getenv("TRANSCRIPTION_SERVICE_PORT")
 TRANSCRIPTION_METHOD = os.getenv("TRANSCRIPTION_METHOD")
-TASK = os.getenv("TASK")
+TASK = os.getenv("TASK", "transcribe").strip().lower()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 MEETING_SERVICE_URL = os.getenv("MEETING_SERVICE_URL")
-MANAGER_SERVICE_URL = os.getenv("MANAGER_SERVICE_URL")
+MANAGER_SERVICE_URL = os.getenv("MANAGER_SERVICE_URL", "http://localhost:8082/api/v0")
 
 # --- Local Whisper Model ---
 if TRANSCRIPTION_METHOD == "local":
@@ -152,6 +152,18 @@ def send_transcription(text: str, meeting_id: int = 0):
         if endpoint:
             threading.Thread(target=send_request, args=(endpoint,), daemon=True).start()
 
+
+def extract_transcription_text(response) -> str:
+    """Support both SDK response objects and plain dict payloads."""
+    if isinstance(response, dict):
+        value = response.get("text", "")
+    else:
+        value = getattr(response, "text", "")
+
+    if isinstance(value, str):
+        return value.strip()
+    return ""
+
 def process_audio_segment(frames, meeting_id):
     print("Processing audio segment...")
     transcription = ""
@@ -178,8 +190,9 @@ def process_audio_segment(frames, meeting_id):
             elif TASK == "translate":
                 response = openai_client.audio.translations.create(model="whisper-1", file=audio_buffer)
             else:
+                print(f"Unsupported TASK={TASK!r}; expected 'transcribe' or 'translate'.")
                 response = {}
-            transcription = response.text.strip()
+            transcription = extract_transcription_text(response)
         except Exception as e:
             print(f"REST transcription error: {e}")
 

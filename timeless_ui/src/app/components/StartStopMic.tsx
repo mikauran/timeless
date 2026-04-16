@@ -8,6 +8,11 @@ export default function StartStopMic({ onMicStarted }: { onMicStarted?: () => vo
   const welcomeText =
     "Welcome to Timeless! Let's build something amazing together.";
 
+  const startMicAndContinue = async () => {
+    await fetch("http://localhost:8080/api/v0/start-mic", { method: "POST" });
+    onMicStarted?.();
+  };
+
   const handleStart = async () => {
     setPhase("speaking");
     try {
@@ -20,19 +25,40 @@ export default function StartStopMic({ onMicStarted }: { onMicStarted?: () => vo
         body: JSON.stringify({ text: welcomeText }),
       });
 
+      if (!response.ok) {
+        console.warn("TTS welcome message failed, continuing without audio.");
+        await startMicAndContinue();
+        return;
+      }
+
       const audioBlob = await response.blob();
+      if (!audioBlob.type.startsWith("audio/")) {
+        console.warn("TTS did not return audio, continuing without playback.");
+        await startMicAndContinue();
+        return;
+      }
+
       const audioUrl = URL.createObjectURL(audioBlob);
       const audio = new Audio(audioUrl);
 
       audio.onended = async () => {
-        await fetch("http://localhost:8080/api/v0/start-mic", { method: "POST" });
-        if (onMicStarted) onMicStarted();
+        await startMicAndContinue();
+      };
+
+      audio.onerror = async () => {
+        console.warn("Audio playback failed, continuing without welcome audio.");
+        await startMicAndContinue();
       };
 
       await audio.play();
     } catch (err) {
-      console.error("Error starting session:", err);
-      setPhase("idle");
+      console.error("Error starting welcome audio, continuing session:", err);
+      try {
+        await startMicAndContinue();
+      } catch (startErr) {
+        console.error("Error starting microphone:", startErr);
+        setPhase("idle");
+      }
     }
   };
 

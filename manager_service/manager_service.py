@@ -234,6 +234,22 @@ def get_requirements(meeting_id: str) -> str:
         print("Error fetching requirements:", e)
         return ""
 
+
+def sync_requirements(meeting_id: str, retries: int = 3, delay_s: float = 0.15) -> str:
+    """
+    Refresh manager-side requirements from the requirements service.
+    Retry briefly because the requirements service receives the same
+    transcription on a separate request and may complete slightly later.
+    """
+    latest = requirements
+    for attempt in range(retries):
+        latest = get_requirements(meeting_id)
+        if latest.strip():
+            return latest
+        if attempt < retries - 1:
+            time.sleep(delay_s)
+    return latest
+
 class EvaluatedState(BaseModel):
     updated_state: DiscussionState
     generate_code: bool
@@ -330,7 +346,7 @@ def evaluate_and_maybe_update_state(current_state: DiscussionState, requirements
     # )
 
     user_prompt = (
-        f"Current state: '{current_state}'\n"
+        f"Current state: '{current_state.value}'\n"
         f"Requirements: '{requirements}'\n"
         f"Notebook summary: '{notebook}'\n"
         f"Latest transcription: '{transcription}'"
@@ -348,11 +364,28 @@ def evaluate_and_maybe_update_state(current_state: DiscussionState, requirements
         )
         result = response.choices[0].message.parsed
         print(f"State evaluation LLM response: {result}")
-        # return result.updated_state, result.generate_code, result.feedback
-        return result.updated_state, result.generate_code, result.feedback_required, result.feedback
+        # Ensure the updated_state is returned as a DiscussionState enum
+        updated = result.updated_state
+        if isinstance(updated, str):
+            try:
+                # Match by the Enum value (the human-readable string)
+                updated_state_enum = next(s for s in DiscussionState if s.value == updated)
+            except StopIteration:
+                # Fallback: try constructing by name (in case LLM returned the Enum name)
+                try:
+                    updated_state_enum = DiscussionState[updated]
+                except Exception:
+                    # If we can't parse it, leave the state unchanged
+                    updated_state_enum = current_state
+        elif isinstance(updated, DiscussionState):
+            updated_state_enum = updated
+        else:
+            updated_state_enum = current_state
+
+        return updated_state_enum, result.generate_code, result.feedback_required, result.feedback
     except Exception as e:
         print("Error in evaluate_and_maybe_update_state:", e)
-        return current_state, False, ""
+        return current_state, False, False, ""
 
 def generate_epics_and_mindmap(requirements: str) -> tuple:
     """
@@ -551,8 +584,9 @@ def trigger_web_code_generation(requirements: str, project_id: str):
         # After generation, start the project
         # current_state = "Testing"
         # current_state = DiscussionState.TESTING
-        processes = run_generated_project(project_id)
-        print(f"Project {project_id} started with processes:", processes.keys())
+        startup_result = run_generated_project(project_id)
+        apply_runtime_state_from_startup(startup_result)
+        print(f"Project {project_id} started with processes:", startup_result["processes"].keys())
         # for name, proc in processes.items():
         #     print(f"[{name.upper()}] log stream starting...")
         #         # You can read lines asynchronously in a thread or async loop
@@ -891,6 +925,19 @@ def wait_for_nextjs_ready(port=3002, timeout=60):
             time.sleep(1)
     return False
 
+
+def wait_for_deployment_ready(url: str, timeout=20):
+    start = time.time()
+    while time.time() - start < timeout:
+        try:
+            response = requests.get(url, timeout=3)
+            if response.status_code < 500:
+                return True
+        except Exception:
+            pass
+        time.sleep(1)
+    return False
+
 def open_browser(url):
     import webbrowser
     print(f"Opening browser at {url}")
@@ -1003,6 +1050,56 @@ def _get_free_port(start: int = 8090) -> int:
     return port
 
 
+def normalize_nextjs_typescript_setup(frontend_dir: str) -> None:
+    """Ensure generated Next.js apps have a compatible TS bootstrap on Windows."""
+    tsconfig_path = os.path.join(frontend_dir, "tsconfig.json")
+    next_env_path = os.path.join(frontend_dir, "next-env.d.ts")
+
+    normalized_tsconfig = {
+        "compilerOptions": {
+            "target": "ES2017",
+            "lib": ["dom", "dom.iterable", "esnext"],
+            "allowJs": True,
+            "skipLibCheck": True,
+            "strict": False,
+            "noEmit": True,
+            "esModuleInterop": True,
+            "module": "esnext",
+            "moduleResolution": "bundler",
+            "resolveJsonModule": True,
+            "isolatedModules": True,
+            "jsx": "preserve",
+            "incremental": True,
+            "plugins": [{"name": "next"}],
+            "paths": {"@/*": ["./src/*"]},
+        },
+        "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
+        "exclude": ["node_modules"],
+    }
+
+    should_write_tsconfig = not os.path.exists(tsconfig_path)
+    if os.path.exists(tsconfig_path):
+        try:
+            with open(tsconfig_path, "r", encoding="utf-8") as f:
+                existing = json.load(f)
+            if existing.get("extends") == "next/core-web-vitals":
+                should_write_tsconfig = True
+        except Exception:
+            should_write_tsconfig = True
+
+    if should_write_tsconfig:
+        with open(tsconfig_path, "w", encoding="utf-8") as f:
+            json.dump(normalized_tsconfig, f, indent=2)
+            f.write("\n")
+        print("[runner] Normalized frontend tsconfig.json for Next.js")
+
+    if not os.path.exists(next_env_path):
+        with open(next_env_path, "w", encoding="utf-8") as f:
+            f.write('/// <reference types="next" />\n')
+            f.write('/// <reference types="next/image-types/global" />\n\n')
+            f.write('// This file should not be edited\n')
+        print("[runner] Created missing next-env.d.ts")
+
 def _venv_executables(project_id: str):
     """Return (python_exe, pip_exe) paths inside the project's venv."""
     base = os.path.join(PROJECTS_DIR, project_id, "venv")
@@ -1065,6 +1162,7 @@ def run_generated_project(project_id: str) -> dict:
 
     frontend_port = _get_free_port(3002)
     processes: dict = {}
+    frontend_ready = False
 
     for attempt in range(MAX_FIX_RETRIES + 1):
         error_log = ""
@@ -1159,6 +1257,7 @@ def run_generated_project(project_id: str) -> dict:
                 npm_cmd = "npm.cmd" if os.name == "nt" else "npm"
 
                 # ── Ensure package.json exists ────────────────────────────
+                normalize_nextjs_typescript_setup(frontend_dir)
                 package_json_path = os.path.join(frontend_dir, "package.json")
                 if not os.path.exists(package_json_path):
                     print("[runner] package.json missing — creating default Next.js package.json")
@@ -1217,6 +1316,7 @@ def run_generated_project(project_id: str) -> dict:
 
                 if ready:
                     processes["frontend"] = fe_proc
+                    frontend_ready = True
                     deployment_url = f"http://localhost:{frontend_port}"
                     print(f"[runner] Frontend ready at {deployment_url}")
                 else:
@@ -1251,14 +1351,29 @@ def run_generated_project(project_id: str) -> dict:
 
         break
 
+    preview_ready = bool(deployment_url) and wait_for_deployment_ready(deployment_url, timeout=20)
+
     if error_log:
-        run_status_message = "Project started with errors — check logs."
+        run_status_message = "Project started with errors ? check logs."
     else:
         generation_progress = 100
-        run_status_message = "Project is running!"
+        run_status_message = "Project is running!" if preview_ready else "Project started. Preview is warming up..."
 
-    return processes
+    return {
+        "processes": processes,
+        "frontend_ready": frontend_ready,
+        "preview_ready": preview_ready,
+        "deployment_url": deployment_url,
+        "error_log": error_log,
+    }
 
+
+def apply_runtime_state_from_startup(startup_result: dict) -> None:
+    global current_state
+    if startup_result.get("processes"):
+        current_state = DiscussionState.TESTING
+    if startup_result.get("preview_ready"):
+        current_state = DiscussionState.DEPLOYMENT_MAINTENANCE
 
 
 async def _proactive_advisor_background(reqs: str, notebook: str) -> None:
@@ -1344,9 +1459,10 @@ async def _codegen_background(requirements: str, proj_id: str) -> None:
     Run web code generation + project startup in a threadpool executor so the
     SSE stream continues to emit live status updates while the blocking work runs.
     """
-    global code_generation_running, run_status_message, generation_progress
+    global code_generation_running, run_status_message, generation_progress, current_state
     sim_task = None
     try:
+        current_state = DiscussionState.IMPLEMENTATION
         generation_progress = 5
         run_status_message = "Generating code with OpenCode..."
         sim_task = asyncio.create_task(_simulate_opencode_progress())
@@ -1430,13 +1546,17 @@ async def receive_transcription(meeting_id: str, request: Request):
         if requirements and not evaluation_in_progress and not code_generation_running:
             asyncio.create_task(_proactive_advisor_background(requirements, notebook_summary))
 
+    # Keep the manager-side requirements snapshot in sync with the requirements service
+    # so the UI's SSE stream reflects updates even when no immediate action is triggered.
+    requirements = sync_requirements(meeting_id)
+
     if not immediate_action:
         return JSONResponse(content={"status": "OK", "message": "Transcription stored, no further action."})
 
     project_id = f"project_{meeting_id}"
 
     # Normal immediate action: evaluate state and check for code generation
-    requirements = get_requirements(meeting_id)
+    requirements = sync_requirements(meeting_id)
 
     new_state, generate_code, feedback_required, feedback = evaluate_and_maybe_update_state(
         current_state, requirements, notebook_summary, transcription
@@ -1541,8 +1661,7 @@ async def stop_discussion(request: Request):
     # }, timeout=36000)  # long timeout for code generation
 
     # return response.json()
-    # current_state = "Design (Tech & UI/UX)"
-    current_state = DiscussionState.DESIGN
+    current_state = DiscussionState.IMPLEMENTATION
     try:
         data = await request.json()
         project_id = data.get("project_id")
@@ -1569,11 +1688,10 @@ async def stop_discussion(request: Request):
         )
         response.raise_for_status()  # <-- Raises HTTPError for non-200
 
-        # After generation, start the project
-        # current_state = "Testing"
-        current_state = DiscussionState.TESTING
-        processes = run_generated_project(project_id)
-        print(f"Project {project_id} started with processes:", processes.keys())
+        # After generation, start the project and advance the lifecycle automatically.
+        startup_result = run_generated_project(project_id)
+        apply_runtime_state_from_startup(startup_result)
+        print(f"Project {project_id} started with processes:", startup_result["processes"].keys())
         # for name, proc in processes.items():
         #     print(f"[{name.upper()}] log stream starting...")
         #         # You can read lines asynchronously in a thread or async loop
@@ -1597,8 +1715,6 @@ async def get_project(project_id: str):
     if not os.path.exists(project_path):
         return {"error": "Project not found"}
 
-    global current_state
-    current_state = "Deployment and Maintenance"
     # ---------------------------
     # Build Directory Tree
     # ---------------------------

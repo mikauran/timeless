@@ -77,7 +77,7 @@ meetings = {}
 class UpdateRequirements(BaseModel):
     update_requirements: bool
 
-def should_update_requirements(transcription):
+def should_update_requirements(current_requirements, transcription):
     """
     Poll the LLM to decide if requirements should be updated based on the latest transcription.
     The prompt asks for a True/False answer.
@@ -92,7 +92,8 @@ def should_update_requirements(transcription):
     system_prompt = (
         "You are an AI system called Timeless, acting as a requirements management assistant for a software project. "
         "Analyze the provided transcription snippet and determine if it contains software requirements that should be added to the project requirements. "
-        "Set 'update_requirements' to true only if the snippet contains actual software requirements or requirement-related clarifications, such as features, user needs, business rules, acceptance criteria, constraints, workflows, functional requirements, or non-functional requirements. "
+        "Also treat follow-up clarifications that refine or complete existing requirements as requirement updates, even if the snippet is short or depends on previous context. "
+        "Set 'update_requirements' to true only if the snippet contains actual software requirements or requirement-related clarifications, such as features, user needs, business rules, acceptance criteria, constraints, workflows, controls, functional requirements, or non-functional requirements. "
         "Do not treat meta-instructions to Timeless as requirements. "
         "Ignore instructions such as reviewing, checking, evaluating, validating, or verifying the discussion or requirements. "
         "Ignore requests for code generation, writing code, implementation, or triggering code generation. "
@@ -102,7 +103,10 @@ def should_update_requirements(transcription):
         "Return only a valid JSON object with exactly one field: 'update_requirements', whose value must be true or false. "
         "Do not include any extra commentary."
     )
-    user_prompt = f"Latest transcription: {transcription}"
+    user_prompt = (
+        f"Current requirements:\n{current_requirements or '(none)'}\n\n"
+        f"Latest transcription: {transcription}"
+    )
     messages = [
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": user_prompt},
@@ -170,9 +174,16 @@ def update_requirements_list(current_requirements, transcriptions):
         return current_requirements
 
 def decide_update_requirements(meeting_id, latest_transcription):
-    llm_decision = should_update_requirements(latest_transcription)
-    many_pending = len(meetings[meeting_id]["pending_transcriptions"]) >= 5
-    return llm_decision or many_pending
+    meeting = meetings[meeting_id]
+    llm_decision = should_update_requirements(meeting["requirements"], latest_transcription)
+    many_pending = len(meeting["pending_transcriptions"]) >= 5
+
+    # Once requirements exist, short follow-up utterances often refine them.
+    has_existing_requirements = bool(meeting["requirements"].strip())
+    has_pending_transcriptions = bool(meeting["pending_transcriptions"])
+    follow_up_update = has_existing_requirements and has_pending_transcriptions
+
+    return llm_decision or many_pending or follow_up_update
 
 def update_requirements(meeting_id):
     meeting = meetings[meeting_id]
