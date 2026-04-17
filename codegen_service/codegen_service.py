@@ -253,33 +253,38 @@ async def generate_project_skeleton(requirements: str) -> dict:
     5. If uncertain about a file, return an empty list instead of guessing.
 
     FRONTEND RULES:
-    6. The frontend MUST match a Next.js 13+ App Router project structure with TypeScript.
+    6. The frontend MUST match a modern Next.js App Router project structure with TypeScript.
     7. The frontend MUST include these exact mandatory files:
-        - "next.config.js"
+        - "next.config.mjs"
         - "package.json"
         - "tsconfig.json"
+        - "postcss.config.mjs"
         - "src/app/layout.tsx"
         - "src/app/page.tsx"
         - "src/app/components/Header.tsx"
         - "src/app/styles/globals.css"
-    8. You MAY add extra backend files or folders **IF requirements need them.**
-    9. Do NOT include Vite, CRA, Webpack, or react-dom-client files.
+    8. If Tailwind CSS is used, the frontend MUST use Tailwind v4 conventions:
+        - package.json must include "tailwindcss": "^4" and "@tailwindcss/postcss": "^4"
+        - postcss.config.mjs must use "@tailwindcss/postcss"
+        - NEVER create a legacy "postcss.config.js" that uses "tailwindcss" directly as a PostCSS plugin
+    9. You MAY add extra backend files or folders **IF requirements need them.**
+    10. Do NOT include Vite, CRA, Webpack, or react-dom-client files.
 
     BACKEND RULES:
-    10. The backend MUST use a minimal FastAPI structure.
-    11. It MUST include:
+    11. The backend MUST use a minimal FastAPI structure.
+    12. It MUST include:
         - "main.py"
         - "routes/users.py"
         - "models/user.py"
         - "requirements.txt"
-    12. You MAY add extra backend files or folders **IF requirements need them.**
+    13. You MAY add extra backend files or folders **IF requirements need them.**
 
     SHARED RULES:
-    13. The shared folder MUST include only cross-layer utilities.
+    14. The shared folder MUST include only cross-layer utilities.
 
     GLOBAL RULES:
-    14. NEVER invent new top-level keys.
-    15. The JSON MUST be syntactically valid and error-free.
+    15. NEVER invent new top-level keys.
+    16. The JSON MUST be syntactically valid and error-free.
     
     Project requirements are: {requirements}
 
@@ -287,9 +292,10 @@ async def generate_project_skeleton(requirements: str) -> dict:
 
     {{
     "frontend": [
-        "next.config.js",
+        "next.config.mjs",
         "package.json",
         "tsconfig.json",
+        "postcss.config.mjs",
         "src/app/layout.tsx",
         "src/app/page.tsx",
         "src/app/components/Header.tsx",

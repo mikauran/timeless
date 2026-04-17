@@ -1100,6 +1100,66 @@ def normalize_nextjs_typescript_setup(frontend_dir: str) -> None:
             f.write('// This file should not be edited\n')
         print("[runner] Created missing next-env.d.ts")
 
+
+def normalize_nextjs_frontend_tooling(frontend_dir: str) -> None:
+    """Canonicalize generated Next.js frontend tooling to one Tailwind/PostCSS setup."""
+    package_json_path = os.path.join(frontend_dir, "package.json")
+    postcss_js_path = os.path.join(frontend_dir, "postcss.config.js")
+    postcss_mjs_path = os.path.join(frontend_dir, "postcss.config.mjs")
+
+    if os.path.exists(package_json_path):
+        try:
+            with open(package_json_path, "r", encoding="utf-8") as f:
+                package_json = json.load(f)
+        except Exception:
+            package_json = {}
+    else:
+        package_json = {}
+
+    package_json.setdefault("name", "generated-frontend")
+    package_json.setdefault("version", "0.1.0")
+    package_json.setdefault("private", True)
+    package_json.setdefault(
+        "scripts",
+        {"dev": "next dev", "build": "next build", "start": "next start"},
+    )
+
+    dependencies = package_json.setdefault("dependencies", {})
+    dependencies.setdefault("next", "16.2.4")
+    dependencies.setdefault("react", "19.2.4")
+    dependencies.setdefault("react-dom", "19.2.4")
+
+    dev_dependencies = package_json.setdefault("devDependencies", {})
+    dev_dependencies["@tailwindcss/postcss"] = "^4"
+    dev_dependencies["tailwindcss"] = "^4"
+    dev_dependencies.setdefault("@types/node", "^20")
+    dev_dependencies.setdefault("@types/react", "^19")
+    dev_dependencies.setdefault("@types/react-dom", "^19")
+    dev_dependencies.setdefault("typescript", "^5")
+    dev_dependencies.pop("autoprefixer", None)
+    dev_dependencies.pop("postcss", None)
+
+    with open(package_json_path, "w", encoding="utf-8") as f:
+        json.dump(package_json, f, indent=2)
+        f.write("\n")
+    print("[runner] Normalized frontend package.json for Next.js + Tailwind v4")
+
+    postcss_config = (
+        'const config = {\n'
+        '  plugins: {\n'
+        '    "@tailwindcss/postcss": {},\n'
+        '  },\n'
+        '};\n\n'
+        'export default config;\n'
+    )
+    with open(postcss_mjs_path, "w", encoding="utf-8") as f:
+        f.write(postcss_config)
+    print("[runner] Wrote canonical postcss.config.mjs")
+
+    if os.path.exists(postcss_js_path):
+        os.remove(postcss_js_path)
+        print("[runner] Removed legacy postcss.config.js")
+
 def _venv_executables(project_id: str):
     """Return (python_exe, pip_exe) paths inside the project's venv."""
     base = os.path.join(PROJECTS_DIR, project_id, "venv")
@@ -1258,6 +1318,7 @@ def run_generated_project(project_id: str) -> dict:
 
                 # ── Ensure package.json exists ────────────────────────────
                 normalize_nextjs_typescript_setup(frontend_dir)
+                normalize_nextjs_frontend_tooling(frontend_dir)
                 package_json_path = os.path.join(frontend_dir, "package.json")
                 if not os.path.exists(package_json_path):
                     print("[runner] package.json missing — creating default Next.js package.json")
