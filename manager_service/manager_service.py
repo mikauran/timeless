@@ -79,6 +79,7 @@ MEETING_SERVICE_URL = os.environ.get("MEETING_SERVICE_URL")
 # CODEGEN_SERVICE_URL = os.environ.get("CODE_GENERATION_SERVICE_URL", "http://localhost:8083")
 CODE_GENERATION_SERVICE_URL = os.environ.get("CODE_GENERATION_SERVICE_URL")
 WEB_CODE_GENERATION_SERVICE_URL = os.environ.get("WEB_CODE_GENERATION_SERVICE_URL")
+FAST_GENERATION_MODE = os.environ.get("FAST_GENERATION_MODE", "true").strip().lower() in {"1", "true", "yes", "on"}
 
 if not WEB_CODE_GENERATION_SERVICE_URL:
     WEB_CODE_GENERATION_SERVICE_URL = "http://localhost:8084/api/v0"   # safe fallback
@@ -552,7 +553,7 @@ def trigger_code_generation(requirements: str):
         print("Error triggering code generation:", e)
         return {}
 
-def trigger_web_code_generation(requirements: str, project_id: str):
+def trigger_web_code_generation(requirements: str, project_id: str, fast_mode: bool = FAST_GENERATION_MODE):
     try:
         # requirements = """
         #                 - Develop a web-based dentist appointment scheduling system.
@@ -576,15 +577,13 @@ def trigger_web_code_generation(requirements: str, project_id: str):
         
         response = requests.post(
             f"{WEB_CODE_GENERATION_SERVICE_URL}/generate_project",
-            json={"project_id": project_id, "requirements": requirements+structure},
+            json={"project_id": project_id, "requirements": requirements+structure, "fast_mode": fast_mode},
             timeout=36000
         )
         response.raise_for_status()  # <-- Raises HTTPError for non-200
 
-        # After generation, start the project
-        # current_state = "Testing"
-        # current_state = DiscussionState.TESTING
-        startup_result = run_generated_project(project_id)
+        # After generation, optionally start the project.
+        startup_result = run_generated_project(project_id, fast_mode=fast_mode)
         apply_runtime_state_from_startup(startup_result)
         print(f"Project {project_id} started with processes:", startup_result["processes"].keys())
         # for name, proc in processes.items():
@@ -595,7 +594,14 @@ def trigger_web_code_generation(requirements: str, project_id: str):
         #         print(f"[{name.upper()}]", line.strip())
 
         # return response.json()
-        return {"status": "OK", "message": "Project generated", "project_id": project_id, "frontend_url": f"http://localhost:3002"}
+        frontend_url = startup_result.get("deployment_url") if not startup_result.get("startup_skipped") else ""
+        return {
+            "status": "OK",
+            "message": startup_result.get("message", "Project generated"),
+            "project_id": project_id,
+            "frontend_url": frontend_url,
+            "fast_mode": fast_mode,
+        }
         # return JSONResponse(content={"status": "OK", "message": "Project generated", "project_id": project_id, "frontend_url": f"http://localhost:3001"})
     except Exception as e:
         import traceback
@@ -1193,7 +1199,7 @@ def _run_opencode_fix(project_path: str, error_log: str) -> bool:
         print(f"[runner] OpenCode fix error: {e}")
         return False
 
-def run_generated_project(project_id: str) -> dict:
+def run_generated_project(project_id: str, fast_mode: bool = False) -> dict:
     """
     Set up and run the generated project end-to-end:
     1. Create an isolated Python venv for the backend.
@@ -1206,6 +1212,21 @@ def run_generated_project(project_id: str) -> dict:
 
     project_path = os.path.join(PROJECTS_DIR, project_id)
     run_config   = parse_run_config(project_path)  # from README.md
+
+    if fast_mode:
+        generation_progress = 100
+        run_status_message = "Code generated. Startup skipped in fast mode."
+        deployment_url = ""
+        return {
+            "project_id": project_id,
+            "processes": {},
+            "frontend_ready": False,
+            "preview_ready": False,
+            "deployment_url": "",
+            "error_log": "",
+            "startup_skipped": True,
+            "message": "Project generated in fast mode",
+        }
 
     # Resolve dirs: prefer README config, fall back to directory scanning
     fe_cfg = run_config.get("frontend", {})
@@ -1431,6 +1452,9 @@ def run_generated_project(project_id: str) -> dict:
 
 def apply_runtime_state_from_startup(startup_result: dict) -> None:
     global current_state
+    if startup_result.get("startup_skipped"):
+        current_state = DiscussionState.IMPLEMENTATION
+        return
     if startup_result.get("processes"):
         current_state = DiscussionState.TESTING
     if startup_result.get("preview_ready"):
@@ -1528,7 +1552,7 @@ async def _codegen_background(requirements: str, proj_id: str) -> None:
         run_status_message = "Generating code with OpenCode..."
         sim_task = asyncio.create_task(_simulate_opencode_progress())
         loop = asyncio.get_event_loop()
-        await loop.run_in_executor(None, trigger_web_code_generation, requirements, proj_id)
+        await loop.run_in_executor(None, trigger_web_code_generation, requirements, proj_id, FAST_GENERATION_MODE)
     except Exception as e:
         run_status_message = f"Code generation error: {str(e)[:120]}"
         print(f"[codegen background] Error: {e}")
@@ -1744,13 +1768,13 @@ async def stop_discussion(request: Request):
         
         response = requests.post(
             f"{WEB_CODE_GENERATION_SERVICE_URL}/generate_project",
-            json={"project_id": project_id, "requirements": requirements},
+            json={"project_id": project_id, "requirements": requirements, "fast_mode": FAST_GENERATION_MODE},
             timeout=36000
         )
         response.raise_for_status()  # <-- Raises HTTPError for non-200
 
         # After generation, start the project and advance the lifecycle automatically.
-        startup_result = run_generated_project(project_id)
+        startup_result = run_generated_project(project_id, fast_mode=FAST_GENERATION_MODE)
         apply_runtime_state_from_startup(startup_result)
         print(f"Project {project_id} started with processes:", startup_result["processes"].keys())
         # for name, proc in processes.items():
@@ -1760,7 +1784,11 @@ async def stop_discussion(request: Request):
         #     for line in proc.stdout:
         #         print(f"[{name.upper()}]", line.strip())
 
-        return response.json()
+        payload = response.json()
+        payload["fast_mode"] = FAST_GENERATION_MODE
+        payload["frontend_url"] = startup_result.get("deployment_url", "")
+        payload["message"] = startup_result.get("message", payload.get("message", "Project generated"))
+        return payload
     except Exception as e:
         import traceback
         print("Error in /stop-discussion:", e)

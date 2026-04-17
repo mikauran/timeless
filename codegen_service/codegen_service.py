@@ -53,6 +53,7 @@ llm_client = OpenAI(api_key=OPENAI_API_KEY)
 class ProjectRequest(BaseModel):
     project_id: str
     requirements: str
+    fast_mode: bool = False
 
 # ---------------------------
 # SSE connections
@@ -401,7 +402,7 @@ async def generate_file_code(file_path: str, requirements: str, existing_files: 
     """
     Ask LLM to generate code for a specific file.
     """
-    context = json.dumps(existing_files)
+    context = json.dumps(existing_files, indent=2)
     # prompt = f"""
     # You are an AI software engineer.
 
@@ -565,7 +566,6 @@ async def generate_file_code(file_path: str, requirements: str, existing_files: 
             * Use fetch/axios ONLY if required
             * Do NOT include backend logic
             * must add code at top where do you think is needed: 'use client';
-            * So you must explicitly enable it using: 'experimental: {{ appDir: true }}' in next.config.js
             * when you import globals.css then must follow the correct path like 'import './styles/globals.css';'
             * in tsconfig.json  dont do typo mistakes like in "module": "commonjs", is module not modules
             
@@ -595,7 +595,7 @@ async def generate_file_code(file_path: str, requirements: str, existing_files: 
     {skeleton}
 
     Other files already generated (you MUST respect them for imports & architecture):
-    {existing_files}
+    {context}
 
     ----------------------------------------------------------------
     NOW GENERATE THE FILE CONTENT:
@@ -613,6 +613,98 @@ async def generate_file_code(file_path: str, requirements: str, existing_files: 
     )
     code = response.choices[0].message.content.strip()
     return code
+
+
+FILE_GEN_CONCURRENCY = int(os.getenv("FILE_GEN_CONCURRENCY", "4"))
+MAX_CONTEXT_FILES = int(os.getenv("MAX_CONTEXT_FILES", "6"))
+MAX_CONTEXT_CHARS = int(os.getenv("MAX_CONTEXT_CHARS", "12000"))
+
+
+def build_relevant_context(file_path: str, existing_files: dict[str, str]) -> dict[str, str]:
+    """Keep only nearby/generated files that are likely to matter for this file."""
+    module, _, relative_path = file_path.partition("/")
+    target_dir = os.path.dirname(relative_path)
+    selected: list[tuple[int, str, str]] = []
+
+    for existing_path, content in existing_files.items():
+        existing_module, _, existing_relative = existing_path.partition("/")
+        score = 0
+
+        if existing_module == "shared":
+            score += 70
+        if existing_module == module:
+            score += 50
+        if target_dir and os.path.dirname(existing_relative) == target_dir:
+            score += 40
+        if os.path.basename(existing_relative) in {"package.json", "tsconfig.json", "next.config.mjs", "postcss.config.mjs"}:
+            score += 30
+        if existing_path == file_path:
+            continue
+        if score > 0:
+            selected.append((score, existing_path, content))
+
+    selected.sort(key=lambda item: (-item[0], item[1]))
+
+    context: dict[str, str] = {}
+    total_chars = 0
+    for _, existing_path, content in selected:
+        if len(context) >= MAX_CONTEXT_FILES:
+            break
+        remaining = MAX_CONTEXT_CHARS - total_chars
+        if remaining <= 0:
+            break
+        trimmed = content[:remaining]
+        context[existing_path] = trimmed
+        total_chars += len(trimmed)
+
+    return context
+
+
+def get_template_file_contents(file_path: str) -> str | None:
+    if file_path == "frontend/next.config.mjs":
+        return 'const nextConfig = {};\n\nexport default nextConfig;\n'
+    if file_path == "frontend/postcss.config.mjs":
+        return (
+            'const config = {\n'
+            '  plugins: {\n'
+            '    "@tailwindcss/postcss": {},\n'
+            '  },\n'
+            '};\n\n'
+            'export default config;\n'
+        )
+    return None
+
+
+async def generate_file_batch(
+    project_id: str,
+    file_paths: list[str],
+    requirements: str,
+    skeleton: dict,
+    existing_files: dict[str, str],
+    progress_count: int,
+    total_files: int,
+) -> tuple[dict[str, str], int]:
+    semaphore = asyncio.Semaphore(FILE_GEN_CONCURRENCY)
+    generated_files: dict[str, str] = {}
+
+    async def generate_one(file_path: str) -> tuple[str, str]:
+        async with semaphore:
+            template = get_template_file_contents(file_path)
+            if template is not None:
+                return file_path, template
+            context_files = build_relevant_context(file_path, existing_files)
+            code = await generate_file_code(file_path, requirements, context_files, skeleton)
+            return file_path, code
+
+    tasks = [asyncio.create_task(generate_one(file_path)) for file_path in file_paths]
+    for task in asyncio.as_completed(tasks):
+        file_path, code = await task
+        save_file(project_id, file_path, code)
+        generated_files[file_path] = code
+        progress_count += 1
+        await send_progress(project_id, f"Generated {file_path}", progress_count, total_files)
+
+    return generated_files, progress_count
 
 def save_file(project_id: str, file_path: str, content: str):
     """
@@ -689,45 +781,39 @@ async def generate_project(req: ProjectRequest):
     save_skeleton(skeleton, project_id)
     total_files = sum(len(files) for files in skeleton.values())
     progress_count = 0
-    existing_files = {}
+    existing_files: dict[str, str] = {}
+    await send_progress(project_id, "Project generation started", progress_count, total_files)
 
-    # Generate code file by file
-    for module, files in skeleton.items():
-        for file_name in files:
-            file_path = f"{module}/{file_name}"
-            print(f"Generating {file_name}...")
-            if file_name == "next.config.js":
-                code = """\
-                    /** @type {{import('next').NextConfig}} */
-                    const nextConfig = {
-                        reactStrictMode: true,
-                        images: {
-                            domains: ["example.com"],
-                        },
-                        experimental: {
-                            appDir: true,
-                        },
-                    };
+    generation_phases = [
+        [f"shared/{file_name}" for file_name in skeleton.get("shared", [])],
+        [f"backend/{file_name}" for file_name in skeleton.get("backend", [])],
+        [f"frontend/{file_name}" for file_name in skeleton.get("frontend", [])],
+    ]
 
-                    module.exports = nextConfig;
-                """
-            else:
-                code = await generate_file_code(file_path, requirements, existing_files, skeleton)
-            # code = file_path
-            save_file(project_id, file_path, code)
-            existing_files[file_path] = code
-            # Save to MongoDB
-            # await files_collection.update_one(
-            #     {"project_id": project_id, "path": file_path},
-            #     {"$set": {"content": code, "module": module}},
-            #     upsert=True
-            # )
-            progress_count += 1
-            # await send_progress(project_id, f"Generated {file_path}", progress_count, total_files)
+    for file_paths in generation_phases:
+        if not file_paths:
+            continue
+        generated_batch, progress_count = await generate_file_batch(
+            project_id=project_id,
+            file_paths=file_paths,
+            requirements=requirements,
+            skeleton=skeleton,
+            existing_files=existing_files,
+            progress_count=progress_count,
+            total_files=total_files,
+        )
+        existing_files.update(generated_batch)
 
     # All files done
-    # await send_progress(project_id, "Project generation complete", total_files, total_files)
-    return JSONResponse(content={"status": "OK", "message": "Project generated", "project_id": project_id})
+    await send_progress(project_id, "Project generation complete", total_files, total_files)
+    return JSONResponse(
+        content={
+            "status": "OK",
+            "message": "Project generated",
+            "project_id": project_id,
+            "fast_mode": req.fast_mode,
+        }
+    )
 
 @app.get("/api/v0/sse/codegen/{project_id}")
 async def sse_codegen(project_id: str):
