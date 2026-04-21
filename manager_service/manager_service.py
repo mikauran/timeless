@@ -984,6 +984,45 @@ def ensure_nextjs_typescript_bootstrap(frontend_dir: str) -> None:
         print("[runner] Created missing next-env.d.ts")
 
 
+def ensure_nextjs_client_component_markers(frontend_dir: str) -> None:
+    """Add 'use client' to App Router components that use client-only React hooks."""
+    app_roots = [
+        os.path.join(frontend_dir, "src", "app"),
+        os.path.join(frontend_dir, "app"),
+    ]
+    hook_markers = (
+        "useState(",
+        "useEffect(",
+        "useRef(",
+        "useReducer(",
+        "useLayoutEffect(",
+    )
+
+    for app_root in app_roots:
+        if not os.path.isdir(app_root):
+            continue
+        for root, _, files in os.walk(app_root):
+            for name in files:
+                if not name.endswith((".tsx", ".jsx")):
+                    continue
+                file_path = os.path.join(root, name)
+                try:
+                    with open(file_path, "r", encoding="utf-8", errors="replace") as f:
+                        content = f.read()
+                except Exception:
+                    continue
+
+                if '"use client"' in content or "'use client'" in content:
+                    continue
+                if not any(marker in content for marker in hook_markers):
+                    continue
+
+                updated = "\"use client\";\n\n" + content.lstrip("\ufeff")
+                with open(file_path, "w", encoding="utf-8") as f:
+                    f.write(updated)
+                print(f"[runner] Added 'use client' to {os.path.relpath(file_path, frontend_dir)}")
+
+
 def ensure_frontend_package_json(frontend_dir: str) -> None:
     """Create a minimal package.json only when generation omitted it entirely."""
     package_json_path = os.path.join(frontend_dir, "package.json")
@@ -1275,6 +1314,7 @@ def run_generated_project(project_id: str, requirements_text: str = "", fast_mod
 
                 # ── Ensure package.json exists ────────────────────────────
                 ensure_nextjs_typescript_bootstrap(frontend_dir)
+                ensure_nextjs_client_component_markers(frontend_dir)
                 ensure_frontend_package_json(frontend_dir)
                 package_json_path = os.path.join(frontend_dir, "package.json")
                 if not os.path.exists(package_json_path):
