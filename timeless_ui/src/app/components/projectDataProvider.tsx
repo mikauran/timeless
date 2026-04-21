@@ -95,6 +95,7 @@ export default function ProjectDataWrapper() {
   const [dismissedSuggestions, setDismissedSuggestions] = useState<Set<number>>(new Set());
   const [evalProgress, setEvalProgress] = useState(0);
   const [sseTimeout, setSseTimeout]     = useState(false);
+  const [resetting, setResetting]       = useState(false);
   const evalTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // ── helpers ──────────────────────────────────────────────────────
@@ -113,6 +114,31 @@ export default function ProjectDataWrapper() {
     if (!projectData) return;
     setSelectedFile(filePath);
     setCode(projectData.files?.[filePath] || "");
+  };
+
+  const handleResetSession = async () => {
+    if (resetting) return;
+    const confirmed = window.confirm("Reset the session and return to the beginning?");
+    if (!confirmed) return;
+    setResetting(true);
+    try {
+      await Promise.allSettled([
+        fetch("http://localhost:8082/api/v0/reset", { method: "POST" }),
+        fetch("http://localhost:8080/api/v0/stop-mic", { method: "POST" }),
+      ]);
+    } finally {
+      setData(null);
+      setProjectData(null);
+      setSelectedFile(null);
+      setCode("");
+      setFetchedProjectId(null);
+      setDismissedSuggestions(new Set());
+      setEvalProgress(0);
+      setSseTimeout(false);
+      setMicStarted(false);
+      setActivePanel("requirements");
+      setResetting(false);
+    }
   };
 
   const buildFileTree = (files: Record<string, string>): FileTreeNode[] => {
@@ -404,6 +430,14 @@ export default function ProjectDataWrapper() {
         {/* State pill */}
         <div className={styles.statePillBar}>
           <StateComponent state={data.current_state} />
+          <button
+            className={styles.resetButton}
+            onClick={handleResetSession}
+            disabled={resetting}
+            type="button"
+          >
+            {resetting ? "Resetting..." : "Reset"}
+          </button>
         </div>
 
         {/* ── Carousel ──────────────────────────────────────────── */}
