@@ -39,7 +39,9 @@ SERVICE_PORT      = int(os.environ.get("WEB_CODE_GENERATION_PORT", "8084"))
 OPENAI_API_KEY    = os.environ.get("OPENAI_API_KEY", "")
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 RUNTIME_DIR       = Path(PROJECTS_DIR) / "_opencode_runtime"
-OPENCODE_TIMEOUT_SECONDS = int(os.environ.get("OPENCODE_TIMEOUT_SECONDS", "1800"))
+DEMO_MODE         = os.environ.get("DEMO_MODE", "false").strip().lower() in {"1", "true", "yes", "on"}
+SKIP_AI_IMAGES    = os.environ.get("SKIP_AI_IMAGES", "true" if DEMO_MODE else "false").strip().lower() in {"1", "true", "yes", "on"}
+OPENCODE_TIMEOUT_SECONDS = int(os.environ.get("OPENCODE_TIMEOUT_SECONDS", "180" if DEMO_MODE else "1800"))
 
 # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # AI Image Generation
@@ -558,12 +560,14 @@ router = APIRouter(prefix="/api/v0")
 class GenerateProjectRequest(BaseModel):
     project_id:   str
     requirements: str
+    fast_mode: bool = False
 
 
 @router.post("/generate_project")
 def generate_project(req: GenerateProjectRequest):
     project_id   = req.project_id.strip()
     requirements = req.requirements.strip()
+    fast_mode    = bool(req.fast_mode)
 
     if not project_id or not requirements:
         raise HTTPException(status_code=400, detail="Missing project_id or requirements")
@@ -575,8 +579,12 @@ def generate_project(req: GenerateProjectRequest):
     project_path = make_project_dir(project_id)
 
     # â”€â”€ Step 1: Generate AI images before code generation â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    print("[codegen] Step 1/2 â€” Generating AI images...")
-    generated_images = generate_ai_images(requirements, project_path)
+    generated_images = {}
+    if fast_mode or SKIP_AI_IMAGES:
+        print("[codegen] Step 1/2 â€” Skipping AI image generation")
+    else:
+        print("[codegen] Step 1/2 â€” Generating AI images...")
+        generated_images = generate_ai_images(requirements, project_path)
 
     # â”€â”€ Step 2: Build prompt and run OpenCode â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     print("[codegen] Step 2/2 â€” Running OpenCode...")

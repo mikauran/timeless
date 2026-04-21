@@ -50,9 +50,7 @@ def start_services(python_path, also_codegen=False, also_opencode=False):
         {"name": "Transcription Service", "script": os.path.join("transcription_service", "transcribe_service.py")},
     ]
     if also_codegen:
-        services.append(
-            {"name": "CodeGen Service", "script": os.path.join("codegen_service", "codegen_service.py")}
-        )
+        print("Skipping legacy CodeGen Service. Use --opencode for the supported generation path.")
     if also_opencode:
         services.append(
             {"name": "OpenCode Service", "script": os.path.join("opencode", "web_code_generation_service.py")}
@@ -111,7 +109,7 @@ def main():
     group.add_argument("--cpu", action="store_true", help="Install faster-whisper for CPU-only support.")
     group.add_argument("--gpu", action="store_true", help="Install faster-whisper and CUDA-enabled PyTorch for GPU support.")
     parser.add_argument("--web", action="store_true", help="Install and start the frontend (timeless_ui)")
-    parser.add_argument("--codegen", action="store_true", help="Start the new codegen backend service (codegen_service)")
+    parser.add_argument("--codegen", action="store_true", help="Deprecated legacy codegen flag; the supported generator is --opencode")
     parser.add_argument("--naivecoder", action="store_true", help="Start the naive coder backend (tkinter_coder_service)")
     parser.add_argument("--opencode", action="store_true", help="Start the open code agent backend (web_code_generation_service)")
     args = parser.parse_args()

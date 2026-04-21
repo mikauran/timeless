@@ -61,9 +61,10 @@ popup_request_id = 0            # Incremented each time a popup is opened so UI 
 epics: list = []                # LLM-grouped epics derived from requirements
 mind_map: dict = {}             # Tree structure for visual mind map
 advisor_suggestions: list = []  # Proactive advisor suggestions (array of strings)
+acceptance_report: dict = {}    # Structured post-build acceptance results
+acceptance_passed = False       # Whether the generated app appears to satisfy the requirements
 
 PROJECTS_DIR = "projects"
-MAX_FIX_RETRIES = 2           # How many times OpenCode is asked to fix errors
 
 # Environment configuration for LLM providers and service URLs
 SERVICE_PORT = os.environ.get("MANAGER_SERVICE_PORT")
@@ -76,15 +77,16 @@ OLLAMA_URL = os.environ.get("OLLAMA_URL")
 OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL")
 VOICE_SERVICE_URL = os.environ.get("VOICE_SERVICE_URL")
 MEETING_SERVICE_URL = os.environ.get("MEETING_SERVICE_URL")
-# CODEGEN_SERVICE_URL = os.environ.get("CODE_GENERATION_SERVICE_URL", "http://localhost:8083")
-CODE_GENERATION_SERVICE_URL = os.environ.get("CODE_GENERATION_SERVICE_URL")
 WEB_CODE_GENERATION_SERVICE_URL = os.environ.get("WEB_CODE_GENERATION_SERVICE_URL")
-FAST_GENERATION_MODE = os.environ.get("FAST_GENERATION_MODE", "true").strip().lower() in {"1", "true", "yes", "on"}
+DEMO_MODE = os.environ.get("DEMO_MODE", "false").strip().lower() in {"1", "true", "yes", "on"}
+FAST_GENERATION_MODE = os.environ.get("FAST_GENERATION_MODE", "false").strip().lower() in {"1", "true", "yes", "on"}
 
 if not WEB_CODE_GENERATION_SERVICE_URL:
     WEB_CODE_GENERATION_SERVICE_URL = "http://localhost:8084/api/v0"   # safe fallback
 
 OPENCODE_MODEL = os.environ.get("OPENCODE_MODEL", "openai/gpt-4o")
+MAX_FIX_RETRIES = int(os.environ.get("MAX_FIX_RETRIES", "0" if DEMO_MODE else "2"))
+OPENCODE_FIX_TIMEOUT_SECONDS = int(os.environ.get("OPENCODE_FIX_TIMEOUT_SECONDS", "60" if DEMO_MODE else "180"))
 
 # Choose the model based on the provider
 CHOSEN_MODEL = (
@@ -256,6 +258,15 @@ class EvaluatedState(BaseModel):
     generate_code: bool
     feedback: str
     feedback_required: bool
+
+
+class AcceptanceReport(BaseModel):
+    passed: bool
+    summary: str
+    implemented: list[str]
+    missing: list[str]
+    risks: list[str]
+    template_signals: list[str]
 
 def evaluate_and_maybe_update_state(current_state: DiscussionState, requirements: str, notebook: str, transcription: str):
     """
@@ -532,58 +543,162 @@ Be direct and address the team as "you". Return ONLY the JSON array.
         return []
 
 
-def trigger_code_generation(requirements: str):
+def collect_project_acceptance_context(project_path: str, max_files: int = 12, max_chars: int = 24000) -> dict[str, str]:
     """
-    Call the external code generation service. This call is expected to have a very long timeout.
+    Collect a small, high-signal subset of generated files for acceptance checking.
     """
-    try:
-        requirements_formatted = format_requirements(requirements)
-        payload = {
-            "prompt": requirements_formatted,
+    preferred_paths = [
+        "README.md",
+        "frontend/package.json",
+        "frontend/src/app/page.tsx",
+        "frontend/src/app/layout.tsx",
+        "frontend/src/app/globals.css",
+        "frontend/app/page.tsx",
+        "frontend/app/layout.tsx",
+        "frontend/app/globals.css",
+        "backend/main.py",
+        "backend/app.py",
+        "backend/requirements.txt",
+    ]
+    allowed_suffixes = {".ts", ".tsx", ".js", ".mjs", ".json", ".md", ".css", ".py", ".txt"}
+    selected: dict[str, str] = {}
+    total_chars = 0
+
+    def maybe_add(rel_path: str) -> None:
+        nonlocal total_chars
+        if rel_path in selected or len(selected) >= max_files or total_chars >= max_chars:
+            return
+        full_path = os.path.join(project_path, rel_path)
+        if not os.path.isfile(full_path):
+            return
+        try:
+            with open(full_path, "r", encoding="utf-8", errors="replace") as f:
+                content = f.read()
+        except Exception:
+            return
+        remaining = max_chars - total_chars
+        if remaining <= 0:
+            return
+        trimmed = content[:remaining]
+        selected[rel_path] = trimmed
+        total_chars += len(trimmed)
+
+    for rel_path in preferred_paths:
+        maybe_add(rel_path)
+
+    if len(selected) < max_files and total_chars < max_chars:
+        for root, _, files in os.walk(project_path):
+            for filename in sorted(files):
+                rel_path = os.path.relpath(os.path.join(root, filename), project_path)
+                _, ext = os.path.splitext(filename)
+                if ext.lower() not in allowed_suffixes:
+                    continue
+                maybe_add(rel_path)
+                if len(selected) >= max_files or total_chars >= max_chars:
+                    return selected
+
+    return selected
+
+
+def fetch_preview_snapshot(url: str, timeout: int = 20, max_chars: int = 12000) -> str:
+    """
+    Fetch rendered preview HTML from the running app for acceptance review.
+    """
+    start = time.time()
+    while time.time() - start < timeout:
+        try:
+            response = requests.get(url, timeout=3)
+            if response.status_code < 500 and response.text:
+                return response.text[:max_chars]
+        except Exception:
+            pass
+        time.sleep(1)
+    return ""
+
+
+def evaluate_generated_project_acceptance(
+    requirements: str,
+    project_path: str,
+    build_log: str,
+    preview_snapshot: str = "",
+) -> dict:
+    """
+    Ask the LLM for a structured acceptance check after a successful build.
+    """
+    context_files = collect_project_acceptance_context(project_path)
+    if not context_files:
+        return {
+            "passed": False,
+            "summary": "No generated files were available for acceptance review.",
+            "implemented": [],
+            "missing": ["Generated project files could not be inspected."],
+            "risks": ["Acceptance check had no source context."],
+            "template_signals": [],
         }
-        full_url = CODE_GENERATION_SERVICE_URL + "/prompt"
-        response = requests.post(full_url, json=payload, timeout=36000)
-        if response.status_code == 200:
-            print("Code generation triggered successfully.")
-            return response.json()
-        else:
-            print("Code generation service error, status:", response.status_code)
-            return {}
+
+    system_prompt = """
+You are a strict software acceptance reviewer.
+
+Review whether a generated application actually implements the requested software requirements.
+
+Rules:
+- Treat successful compilation as necessary but not sufficient.
+- Detect template leakage such as default framework starter text, placeholder sections, or generic stock pages.
+- Be conservative: if a requirement is not clearly implemented in the provided files, list it as missing.
+- Return only a valid JSON object matching the requested schema.
+"""
+    user_prompt = (
+        f"Requirements:\n{requirements}\n\n"
+        f"Frontend build log:\n{build_log[:6000]}\n\n"
+        f"Rendered preview HTML (may be empty if preview was unavailable):\n{preview_snapshot[:12000]}\n\n"
+        f"Project files:\n{json.dumps(context_files, indent=2)}"
+    )
+    try:
+        response = llm_client.beta.chat.completions.parse(
+            model=CHOSEN_MODEL,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            max_tokens=1200,
+            response_format=AcceptanceReport,
+        )
+        result = response.choices[0].message.parsed
+        return {
+            "passed": result.passed,
+            "summary": result.summary,
+            "implemented": result.implemented,
+            "missing": result.missing,
+            "risks": result.risks,
+            "template_signals": result.template_signals,
+        }
     except Exception as e:
-        print("Error triggering code generation:", e)
-        return {}
+        print(f"[acceptance] Error evaluating generated project: {e}")
+        return {
+            "passed": False,
+            "summary": "Acceptance check failed.",
+            "implemented": [],
+            "missing": ["Acceptance check could not be completed."],
+            "risks": [str(e)[:200]],
+            "template_signals": [],
+        }
+
 
 def trigger_web_code_generation(requirements: str, project_id: str, fast_mode: bool = FAST_GENERATION_MODE):
     try:
-        # requirements = """
-        #                 - Develop a web-based dentist appointment scheduling system.
-        #                 - Create a basic dentist appointment form where patients can select a date and then select a time.
-        #                 - Allow appointment scheduling from 9 a.m. to 5 p.m.
-        #                 - Include a dummy dentist list that can support at least 10 dentists and can be updated later with real dentist information.
-        #                 - Include a submit button on the appointment form.
-        #                 - Include a reset button on the appointment form that resets the form after clicking.
-        #                 - Implement a color scheme for the appointment scheduling system that includes a sky color.
-        #                 """
-
         if not project_id or not requirements:
             raise HTTPException(status_code=400, detail="Missing project_id or requirements")
-
-        structure = f"""
-        - The frontend or UI part top/main folder/directory name "frontend".
-        - The beckend or server part top/main folder/directory name "backend".
-
-        """
 
         
         response = requests.post(
             f"{WEB_CODE_GENERATION_SERVICE_URL}/generate_project",
-            json={"project_id": project_id, "requirements": requirements+structure, "fast_mode": fast_mode},
+            json={"project_id": project_id, "requirements": requirements, "fast_mode": fast_mode},
             timeout=36000
         )
         response.raise_for_status()  # <-- Raises HTTPError for non-200
 
         # After generation, optionally start the project.
-        startup_result = run_generated_project(project_id, fast_mode=fast_mode)
+        startup_result = run_generated_project(project_id, requirements_text=requirements, fast_mode=fast_mode)
         apply_runtime_state_from_startup(startup_result)
         print(f"Project {project_id} started with processes:", startup_result["processes"].keys())
         # for name, proc in processes.items():
@@ -601,6 +716,8 @@ def trigger_web_code_generation(requirements: str, project_id: str, fast_mode: b
             "project_id": project_id,
             "frontend_url": frontend_url,
             "fast_mode": fast_mode,
+            "acceptance_report": startup_result.get("acceptance_report", {}),
+            "acceptance_passed": startup_result.get("acceptance_passed", False),
         }
         # return JSONResponse(content={"status": "OK", "message": "Project generated", "project_id": project_id, "frontend_url": f"http://localhost:3001"})
     except Exception as e:
@@ -608,45 +725,6 @@ def trigger_web_code_generation(requirements: str, project_id: str, fast_mode: b
         print("Error in /generation:", e)
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
-# async def trigger_code_generation(requirements: str, project_id: str):
-#     """
-#     Call codegen service and stream SSE progress
-#     """
-#     formatted = format_requirements(requirements)
-#     payload = {"project_id": project_id, "requirements": formatted}
-#     async with aiohttp.ClientSession() as session:
-#         async with session.post(f"{WEB_CODE_GENERATION_SERVICE_URL}/generate_project", json=payload, timeout=36000) as resp:
-#             if resp.status != 200:
-#                 print("Codegen service error", resp.status)
-#                 return {}
-#         sse_url = f"{CODE_GENERATION_SERVICE_URL}/sse/{project_id}"
-#         async with session.get(sse_url) as sse_resp:
-#             async for line in sse_resp.content:
-#                 line_str = line.decode("utf-8").strip()
-#                 if line_str.startswith("data:"):
-#                     data_json = json.loads(line_str[5:])
-#                     print(f"[CodeGen Progress] {data_json['progress']}/{data_json['total']}: {data_json['message']}")
-#     # Dummy deployment URL
-#     return {"frontend_url": f"http://localhost:8000/projects/{project_id}/frontend"}
-
-
-
-# async def forward_codegen_progress(project_id: str):
-#     """
-#     Forward SSE events from codegen_service to manager SSE clients
-#     """
-#     import aiohttp
-
-#     async with aiohttp.ClientSession() as session:
-#         url = f"{CODE_GENERATION_SERVICE_URL}/sse/{project_id}"
-#         async with session.get(url) as resp:
-#             async for line in resp.content:
-#                 if line:
-#                     # Send to all manager SSE clients
-#                     if project_id in codegen_sse_connections:
-#                         await codegen_sse_connections[project_id].put(line.decode())
-
-
 import socket
 import sys
 
@@ -655,214 +733,18 @@ def is_port_free(port: int) -> bool:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         return s.connect_ex(("localhost", port)) != 0
     
-def npm_install_if_needed(ui_dir):
-    node_modules = os.path.join(ui_dir, "node_modules")
-    npm_cmd = "npm.cmd" if os.name == "nt" else "npm"
-    if not os.path.exists(node_modules):
-        package_json = os.path.join(ui_dir, "package.json")
-
-        if os.path.exists(package_json):
-            with open(package_json, "r") as f:
-                pkg = json.load(f)
-            def version_exists(pkg_name, version):
-                try:
-                    subprocess.check_output([
-                        "npm", "view", f"{pkg_name}@{version}", "version"
-                    ])
-                    return True
-                except subprocess.CalledProcessError:
-                    return False
-
-            changed = False
-            # Check deps
-            for section in ["dependencies", "devDependencies"]:
-                if section not in pkg:
-                    continue
-
-                for pkg_name, version in list(pkg[section].items()):
-                    # Remove ^ or ~
-                    clean_version = version.replace("^", "").replace("~", "")
-
-                    if not version_exists(pkg_name, clean_version):
-                        print(f"⚠️ Invalid version for {pkg_name}: {version} → fixing…")
-
-                        # Get latest version
-                        latest = subprocess.check_output(
-                            ["npm", "view", pkg_name, "version"],
-                            text=True
-                        ).strip()
-
-                        pkg[section][pkg_name] = f"^{latest}"
-                        changed = True
-
-            # Save patched package.json
-            if changed:
-                print("🛠 Writing fixed package.json…")
-                with open(package_json, "w") as f:
-                    json.dump(pkg, f, indent=2)
-            print("package.json found — installing based on project dependencies...")
-            subprocess.check_call([npm_cmd, "install", "--legacy-peer-deps"], cwd=ui_dir)
-        else:
-            print("Running 'npm install' in meeting project (first time setup)...")
-            subprocess.check_call([npm_cmd, "install", "--legacy-peer-deps", "react@18.2.0", "react-dom@18.2.0", "typescript@5.2.2"], cwd=ui_dir)
-    else:
-        print("'node_modules' already exists, skipping 'npm install'.")
-
-
-def run_frontend(ui_dir, npm_cmd="npm"):
-    try:
-        # Try: npm run dev
-        proc = subprocess.Popen(
-            [npm_cmd, "run", "dev", "--", "--port", "3002"],
-            cwd=ui_dir,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE
-        )
-
-        stdout, stderr = proc.communicate(timeout=10)
-
-        if proc.returncode != 0:
-            raise Exception("dev failed")
-
-        print("Running with npm run dev")
-        return proc
-
-    except Exception:
-        print("Falling back to npm start...")
-
-        proc = subprocess.Popen(
-            [npm_cmd, "start"],
-            cwd=ui_dir,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE
-        )
-
-        return proc
-    
-
-# def start_nextjs_dev(ui_dir):
-#     print("Starting Next.js dev server in meeting project...")
-#     npm_cmd = "npm.cmd" if os.name == "nt" else "npm"
-#     # proc = subprocess.Popen([npm_cmd, "run", "dev"], cwd=ui_dir, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-#     # proc = subprocess.Popen([npm_cmd, "run", "dev", "--", "--port", "3002"], cwd=ui_dir, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-#     # proc = run_frontend(ui_dir, npm_cmd=npm_cmd)
-#     package_json = os.path.join(ui_dir, "package.json")
-
-#     with open(package_json) as f:
-#         scripts = json.load(f).get("scripts", {})
-
-#     if "dev" in scripts:
-#         cmd = ["npm", "run", "dev", "--", "--port", "3002"]
-#     else:
-#         cmd = ["npm", "start"]
-
-#     proc = subprocess.Popen(cmd, cwd=ui_dir)
-#     return proc
-
-# def start_nextjs_dev(ui_dir):
-#     print("Installing Next.js and React dependencies if missing...")
-#     npm_cmd = "npm.cmd" if os.name == "nt" else "npm"
-
-#     # Step 1: Install next, react, react-dom
-#     subprocess.run([npm_cmd, "install", "next", "react", "react-dom"], cwd=ui_dir, check=True)
-
-#     # Step 2: Read package.json scripts
-#     package_json = os.path.join(ui_dir, "package.json")
-#     with open(package_json, "r") as f:
-#         scripts = json.load(f).get("scripts", {})
-
-#     # Step 3: Decide which command to run
-#     if "dev" in scripts:
-#         cmd = [npm_cmd, "run", "dev", "--", "--port", "3002"]
-#     else:
-#         cmd = [npm_cmd, "start"]
-
-#     # Step 4: Start the Next.js dev server
-#     print("Starting Next.js dev server in meeting project...")
-#     proc = subprocess.Popen(cmd, cwd=ui_dir)
-#     return proc
-
-# def start_nextjs_dev(ui_dir):
-#     npm_cmd = "npm.cmd" if os.name == "nt" else "npm"
-#     package_json_path = os.path.join(ui_dir, "package.json")
-
-#     # Step 1: Install Next.js and React dependencies
-#     print("Installing Next.js and React dependencies if missing...")
-#     subprocess.run([npm_cmd, "install", "next", "react", "react-dom"], cwd=ui_dir, check=True)
-
-#     # Step 2: Load package.json
-#     if not os.path.exists(package_json_path):
-#         print("Error: package.json not found in", ui_dir)
-#         return None
-
-#     with open(package_json_path, "r") as f:
-#         package_data = json.load(f)
-
-#     scripts = package_data.get("scripts", {})
-
-#     # Step 3: Add missing scripts if needed
-#     updated = False
-#     if "dev" not in scripts:
-#         print("Adding missing 'dev' script...")
-#         scripts["dev"] = "next dev"
-#         updated = True
-
-#     if "start" not in scripts:
-#         print("Adding missing 'start' script...")
-#         scripts["start"] = "next start"
-#         updated = True
-
-#     if updated:
-#         package_data["scripts"] = scripts
-#         with open(package_json_path, "w") as f:
-#             json.dump(package_data, f, indent=2)
-#         print("package.json updated with missing scripts.")
-
-#     # Step 4: Decide command
-#     # if "dev" in scripts:
-#     #     cmd = [npm_cmd, "run", "dev", "--", "--port", "3002"]
-#     # else:
-#     #     cmd = [npm_cmd, "start"]
-#     cmd = [npm_cmd, "start", "--", "--port", "3002"]
-#     # Step 5: Start Next.js dev server
-#     print("Starting Next.js dev server in meeting project...")
-#     proc = subprocess.Popen(cmd, cwd=ui_dir)
-#     return proc
-
 def start_nextjs_dev(ui_dir, port=3002):
-    """
-    Starts the Next.js dev server for the given project directory.
-    Steps:
-    1. Creates a Python virtual environment for isolation.
-    2. Installs Node.js dependencies (next, react, react-dom, plus any missing).
-    3. Ensures 'dev' and 'start' scripts exist in package.json.
-    4. Runs the Next.js dev server.
-    """
-    # Step 0: Ensure ui_dir exists
+    """Start the generated Next.js frontend without mutating its toolchain."""
     if not os.path.exists(ui_dir):
         print(f"Error: directory {ui_dir} does not exist.")
         return None
 
-    # # Step 1: Create a Python virtual environment if not exists
-    # venv_dir = os.path.join(ui_dir, "venv")
-    # if not os.path.exists(venv_dir):
-    #     print("Creating Python virtual environment...")
-    #     venv.create(venv_dir, with_pip=True)
-    # else:
-    #     print("Python virtual environment already exists.")
-
-    # # Step 2: Activate venv (platform dependent)
-    # if os.name == "nt":
-    #     python_exe = os.path.join(venv_dir, "Scripts", "python.exe")
-    #     npm_cmd = "npm.cmd"
-    # else:
-    #     python_exe = os.path.join(venv_dir, "bin", "python")
-    #     npm_cmd = "npm"
-
     npm_cmd = "npm.cmd" if os.name == "nt" else "npm"
 
-    # Step 3: Ensure package.json exists before npm install
     package_json_path = os.path.join(ui_dir, "package.json")
+    if not os.path.exists(package_json_path):
+        print("[runner] package.json missing; cannot start frontend.")
+        return None
     if not os.path.exists(package_json_path):
         print("[runner] package.json missing — creating a default Next.js package.json")
         default_pkg = {
@@ -889,31 +771,10 @@ def start_nextjs_dev(ui_dir, port=3002):
         with open(package_json_path, "w") as f:
             json.dump(default_pkg, f, indent=2)
 
-    # Install Node.js dependencies
-    print("Installing Next.js, React, ReactDOM, and project dependencies...")
-    subprocess.run([npm_cmd, "install", "--legacy-peer-deps"], cwd=ui_dir, check=True)
+    if not os.path.exists(package_json_path):
+        print("[runner] package.json missing; cannot start frontend.")
+        return None
 
-    with open(package_json_path, "r") as f:
-        package_data = json.load(f)
-
-    # Step 4: Ensure dev/start scripts exist
-    scripts = package_data.get("scripts", {})
-    updated = False
-    if "dev" not in scripts:
-        print("Adding missing 'dev' script...")
-        scripts["dev"] = "next dev"
-        updated = True
-    if "start" not in scripts:
-        print("Adding missing 'start' script...")
-        scripts["start"] = "next start"
-        updated = True
-    if updated:
-        package_data["scripts"] = scripts
-        with open(package_json_path, "w") as f:
-            json.dump(package_data, f, indent=2)
-        print("package.json updated with missing scripts.")
-
-    # Step 5: Start Next.js dev server
     print(f"Starting Next.js dev server on port {port}...")
     cmd = [npm_cmd, "run", "dev", "--", f"--port={port}"]
     proc = subprocess.Popen(cmd, cwd=ui_dir)
@@ -943,6 +804,32 @@ def wait_for_deployment_ready(url: str, timeout=20):
             pass
         time.sleep(1)
     return False
+
+
+def terminate_process(proc, name: str = "process") -> None:
+    if not proc:
+        return
+    try:
+        if proc.poll() is None:
+            proc.terminate()
+            proc.wait(timeout=5)
+    except Exception:
+        try:
+            proc.kill()
+        except Exception:
+            pass
+
+
+def cleanup_runtime_processes(processes: dict) -> None:
+    for name, proc in list(processes.items()):
+        terminate_process(proc, name)
+    processes.clear()
+
+
+def clear_next_build_artifacts(frontend_dir: str) -> None:
+    next_dir = os.path.join(frontend_dir, ".next")
+    if os.path.isdir(next_dir):
+        shutil.rmtree(next_dir, ignore_errors=True)
 
 def open_browser(url):
     import webbrowser
@@ -1056,8 +943,8 @@ def _get_free_port(start: int = 8090) -> int:
     return port
 
 
-def normalize_nextjs_typescript_setup(frontend_dir: str) -> None:
-    """Ensure generated Next.js apps have a compatible TS bootstrap on Windows."""
+def ensure_nextjs_typescript_bootstrap(frontend_dir: str) -> None:
+    """Create minimal Next.js TypeScript bootstrap files only when missing."""
     tsconfig_path = os.path.join(frontend_dir, "tsconfig.json")
     next_env_path = os.path.join(frontend_dir, "next-env.d.ts")
 
@@ -1083,21 +970,11 @@ def normalize_nextjs_typescript_setup(frontend_dir: str) -> None:
         "exclude": ["node_modules"],
     }
 
-    should_write_tsconfig = not os.path.exists(tsconfig_path)
-    if os.path.exists(tsconfig_path):
-        try:
-            with open(tsconfig_path, "r", encoding="utf-8") as f:
-                existing = json.load(f)
-            if existing.get("extends") == "next/core-web-vitals":
-                should_write_tsconfig = True
-        except Exception:
-            should_write_tsconfig = True
-
-    if should_write_tsconfig:
+    if not os.path.exists(tsconfig_path):
         with open(tsconfig_path, "w", encoding="utf-8") as f:
             json.dump(normalized_tsconfig, f, indent=2)
             f.write("\n")
-        print("[runner] Normalized frontend tsconfig.json for Next.js")
+        print("[runner] Created missing tsconfig.json for Next.js")
 
     if not os.path.exists(next_env_path):
         with open(next_env_path, "w", encoding="utf-8") as f:
@@ -1107,64 +984,58 @@ def normalize_nextjs_typescript_setup(frontend_dir: str) -> None:
         print("[runner] Created missing next-env.d.ts")
 
 
-def normalize_nextjs_frontend_tooling(frontend_dir: str) -> None:
-    """Canonicalize generated Next.js frontend tooling to one Tailwind/PostCSS setup."""
+def ensure_frontend_package_json(frontend_dir: str) -> None:
+    """Create a minimal package.json only when generation omitted it entirely."""
     package_json_path = os.path.join(frontend_dir, "package.json")
-    postcss_js_path = os.path.join(frontend_dir, "postcss.config.js")
-    postcss_mjs_path = os.path.join(frontend_dir, "postcss.config.mjs")
-
     if os.path.exists(package_json_path):
-        try:
-            with open(package_json_path, "r", encoding="utf-8") as f:
-                package_json = json.load(f)
-        except Exception:
-            package_json = {}
-    else:
-        package_json = {}
+        return
 
-    package_json.setdefault("name", "generated-frontend")
-    package_json.setdefault("version", "0.1.0")
-    package_json.setdefault("private", True)
-    package_json.setdefault(
-        "scripts",
-        {"dev": "next dev", "build": "next build", "start": "next start"},
-    )
-
-    dependencies = package_json.setdefault("dependencies", {})
-    dependencies.setdefault("next", "16.2.4")
-    dependencies.setdefault("react", "19.2.4")
-    dependencies.setdefault("react-dom", "19.2.4")
-
-    dev_dependencies = package_json.setdefault("devDependencies", {})
-    dev_dependencies["@tailwindcss/postcss"] = "^4"
-    dev_dependencies["tailwindcss"] = "^4"
-    dev_dependencies.setdefault("@types/node", "^20")
-    dev_dependencies.setdefault("@types/react", "^19")
-    dev_dependencies.setdefault("@types/react-dom", "^19")
-    dev_dependencies.setdefault("typescript", "^5")
-    dev_dependencies.pop("autoprefixer", None)
-    dev_dependencies.pop("postcss", None)
-
+    default_pkg = {
+        "name": "generated-frontend",
+        "version": "0.1.0",
+        "private": True,
+        "scripts": {
+            "dev": "next dev",
+            "build": "next build",
+            "start": "next start",
+        },
+        "dependencies": {
+            "next": "14.2.3",
+            "react": "^18",
+            "react-dom": "^18",
+        },
+        "devDependencies": {
+            "@types/node": "^20",
+            "@types/react": "^18",
+            "@types/react-dom": "^18",
+            "typescript": "^5",
+        },
+    }
     with open(package_json_path, "w", encoding="utf-8") as f:
-        json.dump(package_json, f, indent=2)
+        json.dump(default_pkg, f, indent=2)
         f.write("\n")
-    print("[runner] Normalized frontend package.json for Next.js + Tailwind v4")
+    print("[runner] Created missing package.json fallback")
 
-    postcss_config = (
-        'const config = {\n'
-        '  plugins: {\n'
-        '    "@tailwindcss/postcss": {},\n'
-        '  },\n'
-        '};\n\n'
-        'export default config;\n'
+
+def run_frontend_build(frontend_dir: str, npm_cmd: str, build_cmd: str | None = None) -> tuple[bool, str]:
+    """Run the generated frontend build and return success plus combined logs."""
+    if build_cmd:
+        build_parts = build_cmd.split()
+        if build_parts and build_parts[0] in ("npm", "npx"):
+            build_parts[0] = npm_cmd
+    else:
+        build_parts = [npm_cmd, "run", "build"]
+
+    print(f"[runner] Frontend build: {' '.join(build_parts)}")
+    result = subprocess.run(
+        build_parts,
+        cwd=frontend_dir,
+        capture_output=True,
+        text=True,
+        timeout=600,
     )
-    with open(postcss_mjs_path, "w", encoding="utf-8") as f:
-        f.write(postcss_config)
-    print("[runner] Wrote canonical postcss.config.mjs")
-
-    if os.path.exists(postcss_js_path):
-        os.remove(postcss_js_path)
-        print("[runner] Removed legacy postcss.config.js")
+    combined_log = ((result.stdout or "") + "\n" + (result.stderr or "")).strip()
+    return result.returncode == 0, combined_log
 
 def _venv_executables(project_id: str):
     """Return (python_exe, pip_exe) paths inside the project's venv."""
@@ -1176,30 +1047,80 @@ def _venv_executables(project_id: str):
             os.path.join(base, "bin", "pip"))
 
 
-def _run_opencode_fix(project_path: str, error_log: str) -> bool:
+def resolve_opencode_command() -> list[str]:
+    resolved = shutil.which("opencode") or shutil.which("opencode.cmd")
+    if resolved:
+        return [resolved]
+
+    if os.name == "nt":
+        appdata = os.environ.get("APPDATA")
+        if appdata:
+            for candidate in (
+                os.path.join(appdata, "npm", "opencode.cmd"),
+                os.path.join(appdata, "npm", "opencode.ps1"),
+                os.path.join(appdata, "npm", "opencode"),
+            ):
+                if os.path.exists(candidate):
+                    return [candidate]
+
+    raise FileNotFoundError("opencode CLI not found")
+
+
+def _run_opencode_fix(project_path: str, error_log: str, requirements_text: str = "") -> bool:
     """Ask OpenCode to fix errors in the project. Returns True if successful."""
+    global run_status_message, generation_progress
+    requirements_block = requirements_text.strip()[:4000] if requirements_text else "Requirements not provided."
     fix_prompt = (
-        "The following software project failed to start. "
-        "Fix all issues so it runs correctly without errors. "
+        "The following software project failed validation. "
+        "Fix all reported issues so it builds, starts, and actually implements the missing requirements. "
         "Do not ask clarifying questions — fix the code now.\n\n"
+        "Use the requirements below as the source of truth for what the app should be. "
+        "Do not produce a marketing page, brochure site, placeholder sections, or image-only landing page unless the requirements explicitly call for that.\n\n"
+        "Requirements:\n"
+        f"{requirements_block}\n\n"
+        "Required outcome:\n"
+        "- Implement the real application behavior described in the requirements, not just themed UI.\n"
+        "- Fix any missing interactive logic, state management, rendering, controls, workflows, or data handling needed by the requirements.\n"
+        "- Keep the app usable in the environments described by the requirements, such as browser or mobile, when requested.\n"
+        "- Remove template leakage such as generic metadata, boilerplate copy, and starter text.\n"
+        "- Prefer a focused working product experience over extra marketing content unless the requirements explicitly ask for marketing sections.\n\n"
+        "Constraints:\n"
+        "- Fix the code in the current project files.\n"
+        "- Keep the existing project stack and folder layout.\n"
+        "- Do not ask clarifying questions.\n"
+        "- Do not stop at styling changes; implement working functionality.\n\n"
+        "Validation target:\n"
+        "- After your changes, the app must compile, start, and present the actual requested application behavior rather than a generic landing page.\n\n"
+        "Fix the code now.\n\n"
         f"Error log:\n{error_log[:3000]}"
     )
-    cmd = ["opencode", "run", "--model", OPENCODE_MODEL, "--format", "json", fix_prompt]
+    cmd = [*resolve_opencode_command(), "run", "--model", OPENCODE_MODEL, "--format", "json", fix_prompt]
     env = {**os.environ}
     env["OPENCODE_PERMISSION"] = json.dumps({"write": "allow", "edit": "allow", "bash": "allow"})
     print(f"[runner] Running OpenCode fix in {project_path}")
+    run_status_message = "OpenCode repair is running..."
+    generation_progress = max(generation_progress, 46)
     try:
         result = subprocess.run(
             cmd, cwd=project_path, capture_output=True, text=True,
-            timeout=600, env=env
+            timeout=OPENCODE_FIX_TIMEOUT_SECONDS, env=env
         )
         print(f"[runner] OpenCode fix exited {result.returncode}")
+        if result.stdout:
+            print(f"[runner] OpenCode fix stdout ({len(result.stdout)} chars): {result.stdout[:600]}")
+        if result.stderr:
+            print(f"[runner] OpenCode fix stderr ({len(result.stderr)} chars): {result.stderr[:600]}")
         return result.returncode == 0
+    except subprocess.TimeoutExpired:
+        print(f"[runner] OpenCode fix timed out after {OPENCODE_FIX_TIMEOUT_SECONDS}s")
+        run_status_message = f"OpenCode repair timed out after {OPENCODE_FIX_TIMEOUT_SECONDS}s."
+        return False
     except Exception as e:
         print(f"[runner] OpenCode fix error: {e}")
+        run_status_message = f"OpenCode repair failed: {str(e)[:120]}"
         return False
 
-def run_generated_project(project_id: str, fast_mode: bool = False) -> dict:
+def run_generated_project(project_id: str, requirements_text: str = "", fast_mode: bool = False) -> dict:
     """
     Set up and run the generated project end-to-end:
     1. Create an isolated Python venv for the backend.
@@ -1211,7 +1132,6 @@ def run_generated_project(project_id: str, fast_mode: bool = False) -> dict:
     global run_status_message, deployment_url, generation_progress
 
     project_path = os.path.join(PROJECTS_DIR, project_id)
-    run_config   = parse_run_config(project_path)  # from README.md
 
     if fast_mode:
         generation_progress = 100
@@ -1224,9 +1144,13 @@ def run_generated_project(project_id: str, fast_mode: bool = False) -> dict:
             "preview_ready": False,
             "deployment_url": "",
             "error_log": "",
+            "acceptance_report": {},
+            "acceptance_passed": False,
             "startup_skipped": True,
             "message": "Project generated in fast mode",
         }
+
+    run_config   = parse_run_config(project_path)  # from README.md
 
     # Resolve dirs: prefer README config, fall back to directory scanning
     fe_cfg = run_config.get("frontend", {})
@@ -1244,9 +1168,21 @@ def run_generated_project(project_id: str, fast_mode: bool = False) -> dict:
     frontend_port = _get_free_port(3002)
     processes: dict = {}
     frontend_ready = False
+    latest_build_log = ""
+    latest_acceptance_report: dict = {
+        "passed": False,
+        "summary": "Acceptance check did not run.",
+        "implemented": [],
+        "missing": [],
+        "risks": [],
+        "template_signals": [],
+    }
 
     for attempt in range(MAX_FIX_RETRIES + 1):
         error_log = ""
+        frontend_ready = False
+        deployment_url = ""
+        frontend_port = _get_free_port(3002)
         print(f"\n[runner] ── Attempt {attempt + 1}/{MAX_FIX_RETRIES + 1} for project '{project_id}' ──")
 
         # ── BACKEND ──────────────────────────────────────────────────────────
@@ -1338,9 +1274,13 @@ def run_generated_project(project_id: str, fast_mode: bool = False) -> dict:
                 npm_cmd = "npm.cmd" if os.name == "nt" else "npm"
 
                 # ── Ensure package.json exists ────────────────────────────
-                normalize_nextjs_typescript_setup(frontend_dir)
-                normalize_nextjs_frontend_tooling(frontend_dir)
+                ensure_nextjs_typescript_bootstrap(frontend_dir)
+                ensure_frontend_package_json(frontend_dir)
                 package_json_path = os.path.join(frontend_dir, "package.json")
+                if not os.path.exists(package_json_path):
+                    error_log += "Frontend package.json missing after generation.\n"
+                    print("[runner] package.json missing after generation")
+                    continue
                 if not os.path.exists(package_json_path):
                     print("[runner] package.json missing — creating default Next.js package.json")
                     default_pkg = {
@@ -1372,24 +1312,43 @@ def run_generated_project(project_id: str, fast_mode: bool = False) -> dict:
                 if r.returncode != 0:
                     raise subprocess.CalledProcessError(r.returncode, install_parts, stderr=r.stderr)
 
+                generation_progress = 82
+                run_status_message = "Building generated frontend..."
+                fe_build = fe_cfg.get("build_cmd", "").strip()
+                clear_next_build_artifacts(frontend_dir)
+                build_ok, build_log = run_frontend_build(
+                    frontend_dir=frontend_dir,
+                    npm_cmd=npm_cmd,
+                    build_cmd=fe_build if fe_build else None,
+                )
+                latest_build_log = build_log
+                if not build_ok:
+                    error_log += f"Frontend build failed:\n{build_log[:5000]}\n"
+                    print(f"[runner] Frontend build failed:\n{build_log[:1000]}")
+                    continue
+
                 generation_progress = 88
                 run_status_message = "Starting frontend server..."
                 if "frontend" in processes:
-                    try:
-                        processes["frontend"].terminate()
-                    except Exception:
-                        pass
+                    terminate_process(processes["frontend"], "frontend")
+                    processes.pop("frontend", None)
 
                 # Start: use README start_cmd if available, else start_nextjs_dev
                 fe_start = fe_cfg.get("start_cmd", "").strip()
                 if fe_start:
-                    print(f"[runner] Frontend start (from README): {fe_start} -- --port {frontend_port}")
                     npm_cmd = "npm.cmd" if os.name == "nt" else "npm"
-                    start_parts = fe_start.split()
-                    if start_parts and start_parts[0] in ("npm", "npx"):
-                        start_parts[0] = npm_cmd
-                    # Inject port: append -- --port N for npm run dev/start
-                    start_parts += ["--", f"--port={frontend_port}"]
+                    with open(package_json_path, "r", encoding="utf-8") as f:
+                        package_json = json.load(f)
+                    scripts = package_json.get("scripts", {}) if isinstance(package_json, dict) else {}
+                    if "start" in scripts:
+                        start_parts = [npm_cmd, "run", "start", "--", f"--port={frontend_port}"]
+                        print(f"[runner] Frontend start: npm run start -- --port {frontend_port}")
+                    else:
+                        print(f"[runner] Frontend start (from README): {fe_start} -- --port {frontend_port}")
+                        start_parts = fe_start.split()
+                        if start_parts and start_parts[0] in ("npm", "npx"):
+                            start_parts[0] = npm_cmd
+                        start_parts += ["--", f"--port={frontend_port}"]
                     fe_proc = subprocess.Popen(start_parts, cwd=frontend_dir)
                 else:
                     fe_proc = start_nextjs_dev(frontend_dir, port=frontend_port)
@@ -1414,6 +1373,40 @@ def run_generated_project(project_id: str, fast_mode: bool = False) -> dict:
                         deployment_url = f"http://localhost:{frontend_port}"
                         print("[runner] Frontend process running (port not ready yet)")
 
+                if requirements_text.strip():
+                    generation_progress = 92
+                    run_status_message = "Reviewing requirement coverage..."
+                    preview_snapshot = fetch_preview_snapshot(deployment_url) if deployment_url else ""
+                    latest_acceptance_report = evaluate_generated_project_acceptance(
+                        requirements=requirements_text,
+                        project_path=project_path,
+                        build_log=build_log,
+                        preview_snapshot=preview_snapshot,
+                    )
+                    print(
+                        f"[acceptance] passed={latest_acceptance_report.get('passed')} "
+                        f"missing={len(latest_acceptance_report.get('missing', []))} "
+                        f"template_signals={len(latest_acceptance_report.get('template_signals', []))}"
+                    )
+                    if not latest_acceptance_report.get("passed"):
+                        missing_items = latest_acceptance_report.get("missing", [])
+                        template_signals = latest_acceptance_report.get("template_signals", [])
+                        risks = latest_acceptance_report.get("risks", [])
+                        error_log += "Acceptance check failed:\n"
+                        if latest_acceptance_report.get("summary"):
+                            error_log += f"Summary: {latest_acceptance_report['summary']}\n"
+                        if missing_items:
+                            error_log += "Missing requirements:\n- " + "\n- ".join(missing_items[:12]) + "\n"
+                        if template_signals:
+                            error_log += "Template signals:\n- " + "\n- ".join(template_signals[:8]) + "\n"
+                        if risks:
+                            error_log += "Acceptance risks:\n- " + "\n- ".join(risks[:8]) + "\n"
+                        if attempt < MAX_FIX_RETRIES:
+                            terminate_process(fe_proc, "frontend")
+                            processes.pop("frontend", None)
+                            frontend_ready = False
+                            deployment_url = ""
+
             except subprocess.CalledProcessError as e:
                 err = getattr(e, "stderr", "") or str(e)
                 error_log += f"npm install failed:\n{err}\n"
@@ -1426,20 +1419,34 @@ def run_generated_project(project_id: str, fast_mode: bool = False) -> dict:
         if error_log:
             print(f"[runner] Errors on attempt {attempt + 1}:\n{error_log[:1000]}")
             if attempt < MAX_FIX_RETRIES:
+                cleanup_runtime_processes(processes)
                 generation_progress = 45
                 run_status_message = f"Errors found — asking OpenCode to fix (attempt {attempt + 1}/{MAX_FIX_RETRIES})..."
-                _run_opencode_fix(project_path, error_log)
+                _run_opencode_fix(project_path, error_log, requirements_text=requirements_text)
                 continue
 
         break
 
+    if error_log and not deployment_url:
+        cleanup_runtime_processes(processes)
+        frontend_ready = False
+        deployment_url = ""
+
     preview_ready = bool(deployment_url) and wait_for_deployment_ready(deployment_url, timeout=20)
 
+    acceptance_ok = bool(latest_acceptance_report.get("passed"))
+
     if error_log:
-        run_status_message = "Project started with errors ? check logs."
+        if deployment_url:
+            run_status_message = "Project preview is running, but requirement coverage failed."
+        else:
+            run_status_message = "Project started with errors ? check logs."
     else:
         generation_progress = 100
-        run_status_message = "Project is running!" if preview_ready else "Project started. Preview is warming up..."
+        if not acceptance_ok:
+            run_status_message = "Project builds, but requirement coverage still needs review."
+        else:
+            run_status_message = "Project is running!" if preview_ready else "Project started. Preview is warming up..."
 
     return {
         "processes": processes,
@@ -1447,6 +1454,9 @@ def run_generated_project(project_id: str, fast_mode: bool = False) -> dict:
         "preview_ready": preview_ready,
         "deployment_url": deployment_url,
         "error_log": error_log,
+        "acceptance_report": latest_acceptance_report,
+        "acceptance_passed": acceptance_ok,
+        "build_log": latest_build_log,
     }
 
 
@@ -1457,7 +1467,7 @@ def apply_runtime_state_from_startup(startup_result: dict) -> None:
         return
     if startup_result.get("processes"):
         current_state = DiscussionState.TESTING
-    if startup_result.get("preview_ready"):
+    if startup_result.get("preview_ready") and startup_result.get("acceptance_passed"):
         current_state = DiscussionState.DEPLOYMENT_MAINTENANCE
 
 
@@ -1544,7 +1554,7 @@ async def _codegen_background(requirements: str, proj_id: str) -> None:
     Run web code generation + project startup in a threadpool executor so the
     SSE stream continues to emit live status updates while the blocking work runs.
     """
-    global code_generation_running, run_status_message, generation_progress, current_state
+    global code_generation_running, run_status_message, generation_progress, current_state, acceptance_report, acceptance_passed
     sim_task = None
     try:
         current_state = DiscussionState.IMPLEMENTATION
@@ -1552,7 +1562,9 @@ async def _codegen_background(requirements: str, proj_id: str) -> None:
         run_status_message = "Generating code with OpenCode..."
         sim_task = asyncio.create_task(_simulate_opencode_progress())
         loop = asyncio.get_event_loop()
-        await loop.run_in_executor(None, trigger_web_code_generation, requirements, proj_id, FAST_GENERATION_MODE)
+        result = await loop.run_in_executor(None, trigger_web_code_generation, requirements, proj_id, FAST_GENERATION_MODE)
+        acceptance_report = result.get("acceptance_report", {})
+        acceptance_passed = result.get("acceptance_passed", False)
     except Exception as e:
         run_status_message = f"Code generation error: {str(e)[:120]}"
         print(f"[codegen background] Error: {e}")
@@ -1577,7 +1589,7 @@ async def receive_transcription(meeting_id: str, request: Request):
     4. If immediate action is requested, evaluates whether to update state and/or trigger code generation.
     """
     # global transcriptions, notebook_summary, current_state, code_generation_running, requirements, deployment_url
-    global transcriptions, notebook_summary, current_state, code_generation_running, requirements, deployment_url, current_feedback_required, current_feedback, project_id, run_status_message, evaluation_in_progress, active_popup, popup_request_id
+    global transcriptions, notebook_summary, current_state, code_generation_running, requirements, deployment_url, current_feedback_required, current_feedback, project_id, run_status_message, evaluation_in_progress, active_popup, popup_request_id, acceptance_report, acceptance_passed
 
     new_state = current_state
     generate_code = False
@@ -1657,6 +1669,8 @@ async def receive_transcription(meeting_id: str, request: Request):
         print(f"LLM feedback: {feedback}")
     if generate_code:
         if not code_generation_running:
+            acceptance_report = {}
+            acceptance_passed = False
             code_generation_running = True
             asyncio.create_task(_codegen_background(requirements, project_id))
             return JSONResponse(content={"status": "OK", "message": "Code generation started."})
@@ -1678,6 +1692,8 @@ async def get_status():
         "deployment_url":          deployment_url,
         "current_state":           current_state.value,
         "project_id":              project_id,
+        "acceptance_report":       acceptance_report,
+        "acceptance_passed":       acceptance_passed,
     })
 
 
@@ -1707,6 +1723,8 @@ async def sse_stream():
                 "epics": epics,
                 "mind_map": mind_map,
                 "advisor_suggestions": advisor_suggestions,
+                "acceptance_report": acceptance_report,
+                "acceptance_passed": acceptance_passed,
             }
             # print("SSE Sent:", data)
             yield f"data: {json.dumps(data)}\n\n"
@@ -1732,34 +1750,11 @@ async def sse_codegen(project_id: str):
 @router.post("/stop-discussion")
 async def stop_discussion(request: Request):
     global current_state
-    # data = await request.json()
-    # project_id = data.get("project_id")
-    # requirements = data.get("requirements")
-
-    # if not project_id or not requirements:
-    #     raise HTTPException(status_code=400, detail="Missing project_id or requirements")
-
-    # # Call codegen_service to generate project
-    # response = requests.post(f"{CODE_GENERATION_SERVICE_URL}/generate_project", json={
-    #     "project_id": project_id,
-    #     "requirements": requirements
-    # }, timeout=36000)  # long timeout for code generation
-
-    # return response.json()
     current_state = DiscussionState.IMPLEMENTATION
     try:
         data = await request.json()
         project_id = data.get("project_id")
         requirements = data.get("requirements")
-        # requirements = """
-        #                 - Develop a web-based dentist appointment scheduling system.
-        #                 - Create a basic dentist appointment form where patients can select a date and then select a time.
-        #                 - Allow appointment scheduling from 9 a.m. to 5 p.m.
-        #                 - Include a dummy dentist list that can support at least 10 dentists and can be updated later with real dentist information.
-        #                 - Include a submit button on the appointment form.
-        #                 - Include a reset button on the appointment form that resets the form after clicking.
-        #                 - Implement a color scheme for the appointment scheduling system that includes a sky color.
-        #                 """
 
         if not project_id or not requirements:
             raise HTTPException(status_code=400, detail="Missing project_id or requirements")
@@ -1774,7 +1769,7 @@ async def stop_discussion(request: Request):
         response.raise_for_status()  # <-- Raises HTTPError for non-200
 
         # After generation, start the project and advance the lifecycle automatically.
-        startup_result = run_generated_project(project_id, fast_mode=FAST_GENERATION_MODE)
+        startup_result = run_generated_project(project_id, requirements_text=requirements, fast_mode=FAST_GENERATION_MODE)
         apply_runtime_state_from_startup(startup_result)
         print(f"Project {project_id} started with processes:", startup_result["processes"].keys())
         # for name, proc in processes.items():
@@ -1787,6 +1782,8 @@ async def stop_discussion(request: Request):
         payload = response.json()
         payload["fast_mode"] = FAST_GENERATION_MODE
         payload["frontend_url"] = startup_result.get("deployment_url", "")
+        payload["acceptance_report"] = startup_result.get("acceptance_report", {})
+        payload["acceptance_passed"] = startup_result.get("acceptance_passed", False)
         payload["message"] = startup_result.get("message", payload.get("message", "Project generated"))
         return payload
     except Exception as e:
@@ -1873,7 +1870,7 @@ async def reset_session():
     global code_generation_running, deployment_url, project_id
     global current_feedback, current_feedback_required, run_status_message
     global evaluation_in_progress, generation_progress, active_popup, popup_request_id
-    global epics, mind_map, advisor_suggestions
+    global epics, mind_map, advisor_suggestions, acceptance_report, acceptance_passed
 
     current_state             = DiscussionState.CONCEPTUALIZATION
     transcriptions            = []
@@ -1892,6 +1889,8 @@ async def reset_session():
     epics                     = []
     mind_map                  = {}
     advisor_suggestions       = []
+    acceptance_report         = {}
+    acceptance_passed         = False
 
     return JSONResponse(content={"status": "ok", "message": "Session reset."})
 

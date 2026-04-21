@@ -1,3 +1,14 @@
+<!-- TIMELESS_RUN_CONFIG
+{
+  "frontend": {
+    "dir": "frontend",
+    "install_cmd": "npm install --legacy-peer-deps",
+    "start_cmd": "npm run dev",
+    "type": "nextjs"
+  }
+}
+-->
+
 # Timeless — Holographic Meeting Intelligence
 
 > **v0.2** · AI-powered meeting system that turns spoken requirements into a running web application in real time.
